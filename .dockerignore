@@ -1,0 +1,11 @@
+**/bin/
+**/obj/
+.vs/
+.git/
+.claude/
+*.user
+
+# Local-dev runtime data (see .gitignore) - never let it into the build context, even though the
+# final image stage only copies dotnet publish's output and wouldn't pick these up anyway.
+src/MeuralManager.Web/cache/
+src/MeuralManager.Web/keys/

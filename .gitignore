@@ -1,0 +1,11 @@
+bin/
+obj/
+.vs/
+*.user
+
+# Runtime data for MeuralManager.Web (local dev without CACHE_ROOT_PATH/DATA_PROTECTION_KEYS_PATH
+# set) - per-account SQLite cache and ASP.NET Core Data Protection key material. Never commit
+# either: the cache holds real account data (email in the folder name, playlist/item names), and
+# the keys can decrypt browser-stored session tokens (see WebSessionStore).
+src/MeuralManager.Web/cache/
+src/MeuralManager.Web/keys/

@@ -1,0 +1,13 @@
+services:
+  meuralmanager-web:
+    image: ghcr.io/geeforceone/meuralmanager:latest
+    ports:
+      - "8080:8080"
+    volumes:
+      - meuralmanager-keys:/data/keys
+      - meuralmanager-cache:/data/cache
+    restart: unless-stopped
+
+volumes:
+  meuralmanager-keys:
+  meuralmanager-cache:

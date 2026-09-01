@@ -1,0 +1,176 @@
+@inject MeuralSessionState Session
+@inject WebSessionStore SessionStore
+
+<div class="auth-shell">
+    <div class="auth-card">
+        <div class="auth-brand">
+            <span class="brand-mark">◈</span>
+            <h1>Meural Manager</h1>
+        </div>
+
+        @if (_stage == Stage.Challenge)
+        {
+            <p class="auth-subtitle">
+                Enter the verification code sent to <strong>@_challengeDestination</strong>.
+            </p>
+            <EditForm Model="_challengeModel" OnValidSubmit="SubmitChallengeAsync">
+                <label class="field">
+                    <span>Verification code</span>
+                    <InputText @bind-Value="_challengeModel.Code" disabled="@_busy" placeholder="123456" />
+                </label>
+
+                @if (_error is not null)
+                {
+                    <p class="auth-error">@_error</p>
+                }
+
+                <button class="btn btn-primary btn-block" type="submit" disabled="@_busy">
+                    @(_busy ? "Verifying…" : "Verify")
+                </button>
+                <button class="btn btn-link" type="button" disabled="@_busy" @onclick="CancelChallenge">
+                    Start over
+                </button>
+            </EditForm>
+        }
+        else
+        {
+            <p class="auth-subtitle">Sign in with your Meural account to manage uploads and playlists.</p>
+            <EditForm Model="_loginModel" OnValidSubmit="SubmitLoginAsync">
+                <label class="field">
+                    <span>Email</span>
+                    <InputText @bind-Value="_loginModel.Email" disabled="@_busy" placeholder="you@example.com" />
+                </label>
+                <label class="field">
+                    <span>Password</span>
+                    <InputText @bind-Value="_loginModel.Password" type="password" disabled="@_busy" placeholder="••••••••" />
+                </label>
+
+                @if (_error is not null)
+                {
+                    <p class="auth-error">@_error</p>
+                }
+
+                <button class="btn btn-primary btn-block" type="submit" disabled="@_busy">
+                    @(_busy ? "Signing in…" : "Sign in")
+                </button>
+            </EditForm>
+        }
+    </div>
+</div>
+
+@code {
+    private enum Stage { Login, Challenge }
+
+    private Stage _stage = Stage.Login;
+    private bool _busy;
+    private string? _error;
+    private string? _challengeDestination;
+    private MeuralApiClient? _pendingClient;
+
+    private readonly LoginModel _loginModel = new();
+    private readonly ChallengeModel _challengeModel = new();
+
+    private sealed class LoginModel
+    {
+        public string Email { get; set; } = "";
+        public string Password { get; set; } = "";
+    }
+
+    private sealed class ChallengeModel
+    {
+        public string Code { get; set; } = "";
+    }
+
+    private async Task SubmitLoginAsync()
+    {
+        var email = _loginModel.Email.Trim();
+        var password = _loginModel.Password;
+        if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
+        {
+            _error = "Email and password are required.";
+            return;
+        }
+
+        _error = null;
+        _busy = true;
+        var client = new MeuralApiClient();
+        try
+        {
+            await client.AuthenticateAsync(email, password);
+            await CompleteSignInAsync(client, email);
+        }
+        catch (MeuralChallengeRequiredException)
+        {
+            _pendingClient = client;
+            _challengeDestination = client.PendingChallengeDestination;
+            _stage = Stage.Challenge;
+        }
+        catch (Exception ex)
+        {
+            client.Dispose();
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task SubmitChallengeAsync()
+    {
+        var client = _pendingClient;
+        if (client is null)
+        {
+            CancelChallenge();
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_challengeModel.Code))
+        {
+            _error = "Enter the verification code.";
+            return;
+        }
+
+        _error = null;
+        _busy = true;
+        try
+        {
+            await client.CompleteChallengeAsync(_challengeModel.Code.Trim());
+            await CompleteSignInAsync(client, _loginModel.Email.Trim());
+            _pendingClient = null;
+        }
+        catch (MeuralChallengeRequiredException)
+        {
+            // Netgear wants a further challenge - stay on this screen for the next one.
+            _challengeDestination = client.PendingChallengeDestination;
+            _challengeModel.Code = "";
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private void CancelChallenge()
+    {
+        _pendingClient?.Dispose();
+        _pendingClient = null;
+        _stage = Stage.Login;
+        _error = null;
+        _challengeModel.Code = "";
+    }
+
+    private async Task CompleteSignInAsync(MeuralApiClient client, string email)
+    {
+        if (client.RefreshToken is not null)
+        {
+            await SessionStore.SaveAsync(new WebSessionStore.StoredSession(
+                email, client.RefreshToken, client.TrustId, client.ExpiresAt));
+        }
+        await Session.SetAuthenticatedAsync(client, email);
+    }
+}

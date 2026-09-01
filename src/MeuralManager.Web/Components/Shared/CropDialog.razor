@@ -1,0 +1,178 @@
+@inject IJSRuntime JS
+
+@if (_visible)
+{
+    <div class="modal-backdrop" @onclick="Cancel">
+        <div class="modal-card crop-dialog" @onclick:stopPropagation="true">
+            <div class="crop-dialog-header">
+                <h3>Crop Image</h3>
+                <div class="crop-ratio-toggle">
+                    <button type="button" class="btn btn-icon @(_aspect == CropAspect.Wide ? "btn-primary" : "btn-secondary")"
+                            title="16:9 (landscape)" aria-label="16:9 landscape" @onclick="() => SetAspectAsync(CropAspect.Wide)">
+                        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <rect x="2" y="5" width="14" height="8" rx="1.2" stroke="currentColor" stroke-width="1.6" />
+                        </svg>
+                    </button>
+                    <button type="button" class="btn btn-icon @(_aspect == CropAspect.Tall ? "btn-primary" : "btn-secondary")"
+                            title="9:16 (portrait)" aria-label="9:16 portrait" @onclick="() => SetAspectAsync(CropAspect.Tall)">
+                        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <rect x="5" y="2" width="8" height="14" rx="1.2" stroke="currentColor" stroke-width="1.6" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <div class="crop-stage" @ref="_stageRef">
+                <img @ref="_imgRef" src="@_imageUrl" class="crop-image" alt="" />
+                <div @ref="_frameRef" class="crop-frame"></div>
+            </div>
+
+            @if (_error is not null)
+            {
+                <p class="crop-error">@_error</p>
+            }
+
+            <div class="modal-actions">
+                <span class="modal-hint">Scroll to resize the frame, drag to reposition it</span>
+                @if (_allowSkip)
+                {
+                    <button type="button" class="btn btn-ghost" @onclick="Skip" disabled="@_busy">Upload as-is</button>
+                }
+                <button type="button" class="btn btn-ghost" @onclick="Cancel" disabled="@_busy">Cancel</button>
+                <button type="button" class="btn btn-primary" @onclick="Apply" disabled="@_busy">
+                    @(_busy ? "Applying…" : "Apply crop")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    public enum CropAspect { Wide, Tall }
+    public enum CropOutcome { Applied, Skipped, Cancelled }
+    public readonly record struct CropResult(CropOutcome Outcome, string? CroppedPath);
+
+    private bool _visible;
+    private bool _needsInit;
+    private bool _busy;
+    private bool _allowSkip;
+    private string? _error;
+    private string _imageUrl = "";
+    private CropAspect _aspect;
+    private ElementReference _stageRef;
+    private ElementReference _imgRef;
+    private ElementReference _frameRef;
+    private TaskCompletionSource<CropResult>? _tcs;
+
+    // Opens the dialog on the given image and waits for the user to apply (resolves with a path
+    // to a cropped JPEG written to a temp file - the caller owns deleting it once it's done with
+    // it, same as UploadNewAsync's own temp-dir lifecycle), skip (only offered when allowSkip is
+    // true - used by the upload flow to allow uploading a file unmodified), or cancel.
+    public Task<CropResult> CropAsync(string imageUrl, CropAspect initialAspect, bool allowSkip = false)
+    {
+        _imageUrl = imageUrl;
+        _aspect = initialAspect;
+        _allowSkip = allowSkip;
+        _error = null;
+        _busy = false;
+        _visible = true;
+        _needsInit = true;
+        _tcs = new TaskCompletionSource<CropResult>();
+        StateHasChanged();
+        return _tcs.Task;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_needsInit)
+            return;
+
+        _needsInit = false;
+        try
+        {
+            await JS.InvokeVoidAsync("meuralCropper.init", _stageRef, _imgRef, _frameRef, AspectW, AspectH);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Couldn't load the image: {ex.Message}";
+            StateHasChanged();
+        }
+    }
+
+    private int AspectW => _aspect == CropAspect.Wide ? 16 : 9;
+    private int AspectH => _aspect == CropAspect.Wide ? 9 : 16;
+
+    private async Task SetAspectAsync(CropAspect aspect)
+    {
+        if (_aspect == aspect)
+            return;
+
+        _aspect = aspect;
+        await JS.InvokeVoidAsync("meuralCropper.setAspect", _frameRef, AspectW, AspectH);
+    }
+
+    private async Task Apply()
+    {
+        _busy = true;
+        _error = null;
+        StateHasChanged();
+
+        string? path = null;
+        try
+        {
+            // Streamed via IJSStreamReference (not a plain byte[] return value) specifically to
+            // avoid the SignalR hub's default message-size limit - a JPEG this size would blow
+            // straight through it if it went back as one interop return value.
+            await using var streamRef = await JS.InvokeAsync<IJSStreamReference>("meuralCropper.exportCrop", _imgRef, _frameRef);
+
+            var tempDir = Path.Combine(Path.GetTempPath(), "meuralmanager-web-crops");
+            Directory.CreateDirectory(tempDir);
+            path = Path.Combine(tempDir, $"{Guid.NewGuid():N}.jpg");
+
+            await using var sourceStream = await streamRef.OpenReadStreamAsync(maxAllowedSize: 25_000_000);
+            await using (var fileStream = File.Create(path))
+                await sourceStream.CopyToAsync(fileStream);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Couldn't process the crop: {ex.Message}";
+            _busy = false;
+            StateHasChanged();
+            return;
+        }
+
+        await DisposeJsStateAsync();
+        Resolve(new CropResult(CropOutcome.Applied, path));
+    }
+
+    private async Task Skip()
+    {
+        await DisposeJsStateAsync();
+        Resolve(new CropResult(CropOutcome.Skipped, null));
+    }
+
+    private async Task Cancel()
+    {
+        await DisposeJsStateAsync();
+        Resolve(new CropResult(CropOutcome.Cancelled, null));
+    }
+
+    // Disconnects the ResizeObserver meuralCropper.init sets up - not strictly required (the
+    // WeakMap-held state becomes unreachable once the frame element is unmounted anyway) but
+    // avoids relying on GC timing to stop it observing a dialog that's already closed.
+    private async Task DisposeJsStateAsync()
+    {
+        try { await JS.InvokeVoidAsync("meuralCropper.dispose", _frameRef); }
+        catch (JSDisconnectedException) { /* circuit already gone */ }
+    }
+
+    private void Resolve(CropResult result)
+    {
+        _visible = false;
+        _busy = false;
+        var tcs = _tcs;
+        _tcs = null;
+        StateHasChanged();
+        tcs?.TrySetResult(result);
+    }
+}

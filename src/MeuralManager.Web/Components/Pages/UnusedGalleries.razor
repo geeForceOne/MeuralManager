@@ -1,0 +1,195 @@
+@page "/unused-galleries"
+@implements IDisposable
+@inject MeuralSessionState Session
+@inject BackupArchiveService BackupArchive
+
+<div class="page-header">
+    <h1>Unused Playlists</h1>
+    <p class="page-subtitle">Playlists that exist in your account but aren't loaded on any Canvas frame.</p>
+</div>
+
+@if (!Session.HasScanned)
+{
+    <p class="empty-state">Scan your account from the <a href="/">Dashboard</a> first.</p>
+}
+else
+{
+    <div class="toolbar">
+        <span class="toolbar-summary">@Unused.Count playlist(s) found</span>
+        <div class="toolbar-spacer"></div>
+
+        @if (_busy)
+        {
+            <span class="spinner spinner-inline"></span>
+            <button class="btn btn-ghost" @onclick="Cancel">Cancel</button>
+        }
+
+        @if (Unused.Count > 0)
+        {
+            @if (_backupUrl is not null)
+            {
+                <a class="btn btn-secondary" href="@_backupUrl">Download backup.zip</a>
+            }
+            else
+            {
+                <button class="btn btn-secondary" @onclick="BackupAsync" disabled="@_busy">
+                    @(_phase == Phase.BackingUp ? "Backing up…" : "Back up as ZIP")
+                </button>
+            }
+            <button class="btn btn-danger" @onclick="DeleteAllAsync" disabled="@_busy">
+                @(_phase == Phase.Deleting ? "Deleting…" : "Delete all")
+            </button>
+        }
+    </div>
+
+    @if (Unused.Count == 0)
+    {
+        <p class="empty-state">Every playlist is loaded on a frame — nothing to clean up.</p>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Items</th>
+                        <th class="id-col">Playlist ID</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var gallery in Unused)
+                    {
+                        <tr>
+                            <td>@(gallery.Name ?? "(untitled)")</td>
+                            <td class="muted">@(gallery.ItemIds?.Count ?? 0)</td>
+                            <td class="id-col muted">@gallery.Id</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+
+<ActivityLogPanel Log="_log" />
+<ConfirmDialog @ref="_confirm" />
+
+@code {
+    private enum Phase { Idle, BackingUp, Deleting }
+
+    private Phase _phase = Phase.Idle;
+    private bool _busy => _phase != Phase.Idle;
+    private string? _backupUrl;
+    private CancellationTokenSource? _cts;
+    private readonly ActivityLog _log = new();
+    private ConfirmDialog _confirm = null!;
+
+    private MeuralApiClient Client => Session.Client!;
+
+    private List<MeuralGallery> Unused => Session.HasScanned
+        ? CleanupService.FindUnusedGalleries(Session.AllGalleriesCache ?? [], Session.GetFrameGalleryIds())
+        : [];
+
+    protected override void OnInitialized() => _log.Changed += HandleLogChanged;
+
+    private void HandleLogChanged() => InvokeAsync(StateHasChanged);
+
+    private void Cancel() => _cts?.Cancel();
+
+    private async Task BackupAsync()
+    {
+        var unused = Unused;
+        _phase = Phase.BackingUp;
+        _backupUrl = null;
+        var cts = _cts = new CancellationTokenSource();
+        try
+        {
+            var workingDir = BackupArchive.BeginWorkingDirectory(out var id);
+            _log.Append($"Saving images for {unused.Count} playlist(s)...");
+
+            int totalSaved = 0, totalFailed = 0, totalSkipped = 0, index = 0;
+            foreach (var gallery in unused)
+            {
+                cts.Token.ThrowIfCancellationRequested();
+                index++;
+                var displayName = gallery.Name ?? $"playlist {gallery.Id}";
+                _log.Append($"[{index}/{unused.Count}] \"{displayName}\": {gallery.ItemIds?.Count ?? 0} item(s)");
+
+                var summary = await BackupService.BackupGalleryAsync(Client, gallery, workingDir, _log.AsProgress(), cts.Token);
+                _log.Append($"    -> {summary.Saved} saved, {summary.Failed} failed, {summary.Skipped} skipped.");
+
+                totalSaved += summary.Saved;
+                totalFailed += summary.Failed;
+                totalSkipped += summary.Skipped;
+            }
+
+            _log.Append($"Playlist image backup finished: {totalSaved} saved, {totalFailed} failed, {totalSkipped} skipped.");
+
+            var fileName = $"meural-playlists-{DateTime.Now:yyyyMMdd-HHmmss}.zip";
+            BackupArchive.FinishAsZip(id, workingDir, fileName);
+            _backupUrl = $"/backups/{id}/download";
+            _log.Append("Backup ready - use the download link above.");
+        }
+        catch (OperationCanceledException)
+        {
+            _log.Append("Backup cancelled.");
+        }
+        catch (Exception ex)
+        {
+            _log.Append($"Backup failed: {ex.Message}");
+        }
+        finally
+        {
+            _cts?.Dispose();
+            _cts = null;
+            _phase = Phase.Idle;
+        }
+    }
+
+    private async Task DeleteAllAsync()
+    {
+        var unused = Unused;
+        if (!await _confirm.AskAsync(
+            "Delete unused playlists?",
+            $"This will PERMANENTLY delete {unused.Count} playlist(s) (the uploads inside them are not affected). This cannot be undone.",
+            "Delete all"))
+            return;
+
+        _phase = Phase.Deleting;
+        var cts = _cts = new CancellationTokenSource();
+        try
+        {
+            _log.Append($"Deleting {unused.Count} playlist(s)...");
+            var summary = await CleanupService.DeleteGalleriesAsync(Client, unused, _log.AsProgress(), cts.Token);
+            _log.Append($"Finished deleting playlists: {summary.Done} removed, {summary.Failed} failed.");
+            foreach (var gallery in unused)
+            {
+                if (gallery.Id is long id)
+                    await Session.RemoveGalleryAsync(id);
+            }
+            _backupUrl = null;
+        }
+        catch (OperationCanceledException)
+        {
+            _log.Append("Delete cancelled.");
+        }
+        catch (Exception ex)
+        {
+            _log.Append($"Delete failed: {ex.Message}");
+        }
+        finally
+        {
+            _cts?.Dispose();
+            _cts = null;
+            _phase = Phase.Idle;
+        }
+    }
+
+    public void Dispose()
+    {
+        _log.Changed -= HandleLogChanged;
+        _cts?.Cancel();
+        _cts?.Dispose();
+    }
+}

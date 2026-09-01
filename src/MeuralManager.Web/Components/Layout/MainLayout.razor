@@ -1,0 +1,109 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject MeuralSessionState Session
+@inject WebSessionStore SessionStore
+
+@if (_checkingSession)
+{
+    <div class="session-check">
+        <div class="spinner"></div>
+        <p>Checking for a saved session…</p>
+    </div>
+}
+else if (!Session.IsAuthenticated)
+{
+    <Login />
+}
+else
+{
+    <div class="app-shell">
+        <NavMenu Email="@Session.Email" OnSignOut="SignOutAsync" />
+        <main class="app-main">
+            <ErrorBoundary @ref="_errorBoundary">
+                <ChildContent>
+                    @Body
+                </ChildContent>
+                <ErrorContent Context="ex">
+                    <div class="error-boundary">
+                        <h2>Something went wrong</h2>
+                        <p class="muted">
+                            @ex.GetType().Name: @ex.Message
+                        </p>
+                        <p class="muted">
+                            This page hit an unexpected error instead of just hanging - it's been logged server-side.
+                        </p>
+                        <div class="error-boundary-actions">
+                            <button class="btn btn-primary" @onclick="RecoverFromError">Try again</button>
+                            <a class="btn btn-ghost" href="/">Back to Dashboard</a>
+                        </div>
+                    </div>
+                </ErrorContent>
+            </ErrorBoundary>
+        </main>
+    </div>
+
+    @if (Session.IsScanning)
+    {
+        <div class="scan-lock-backdrop">
+            <div class="scan-lock-card">
+                <div class="spinner"></div>
+                <h3>Scanning your account…</h3>
+                <p class="muted">Please don't navigate away - this will only take a moment.</p>
+                <ActivityLogPanel Log="Session.ScanLog" />
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private bool _checkingSession = true;
+    private ErrorBoundary? _errorBoundary;
+
+    private void RecoverFromError() => _errorBoundary?.Recover();
+
+    protected override void OnInitialized()
+    {
+        Session.Changed += HandleSessionChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+
+        try
+        {
+            var saved = await SessionStore.LoadAsync();
+            if (saved is null)
+                return;
+
+            var client = new MeuralApiClient(saved.TrustId);
+            if (await client.TryRestoreSessionAsync(saved.RefreshToken))
+            {
+                await SessionStore.SaveAsync(new WebSessionStore.StoredSession(
+                    saved.Email, client.RefreshToken!, client.TrustId, client.ExpiresAt));
+                await Session.SetAuthenticatedAsync(client, saved.Email);
+            }
+            else
+            {
+                client.Dispose();
+                await SessionStore.ClearAsync();
+            }
+        }
+        finally
+        {
+            _checkingSession = false;
+            StateHasChanged();
+        }
+    }
+
+    private void HandleSessionChanged() => InvokeAsync(StateHasChanged);
+
+    private async Task SignOutAsync()
+    {
+        await SessionStore.ClearAsync();
+        Session.SignOut();
+    }
+
+    public void Dispose() => Session.Changed -= HandleSessionChanged;
+}

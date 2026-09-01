@@ -1,0 +1,6 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/MeuralManager.Core/MeuralManager.Core.csproj" />
+    <Project Path="src/MeuralManager.Web/MeuralManager.Web.csproj" />
+  </Folder>
+</Solution>

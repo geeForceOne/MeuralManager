@@ -1,0 +1,75 @@
+@if (_visible)
+{
+    <div class="modal-backdrop" @onclick="Cancel">
+        <div class="modal-card modal-card-lg" @onclick:stopPropagation="true">
+            <h3>Add Existing Images</h3>
+            <input class="text-input" placeholder="Filter by name…" @bind="_filter" @bind:event="oninput" />
+
+            <div class="picker-grid">
+                @if (Filtered.Count == 0)
+                {
+                    <p class="empty-state">No matching uploads.</p>
+                }
+                @foreach (var item in Filtered)
+                {
+                    var isSelected = _selected.Contains(item);
+                    <label class="picker-tile @(isSelected ? "selected" : "")">
+                        <input type="checkbox" checked="@isSelected" @onchange="e => Toggle(item, (bool)e.Value!)" />
+                        <ItemImage Item="item" />
+                        <span class="picker-tile-name">@(item.Name ?? "(untitled)")</span>
+                    </label>
+                }
+            </div>
+
+            <div class="modal-actions">
+                <span class="modal-hint">@_selected.Count selected</span>
+                <button type="button" class="btn btn-ghost" @onclick="Cancel">Cancel</button>
+                <button type="button" class="btn btn-primary" disabled="@(_selected.Count == 0)" @onclick="Confirm">
+                    Add selected
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _visible;
+    private string _filter = "";
+    private List<MeuralItem> _available = [];
+    private readonly HashSet<MeuralItem> _selected = [];
+    private TaskCompletionSource<List<MeuralItem>?>? _tcs;
+
+    private List<MeuralItem> Filtered => string.IsNullOrWhiteSpace(_filter)
+        ? _available
+        : _available.Where(i => (i.Name ?? "").Contains(_filter, StringComparison.OrdinalIgnoreCase)).ToList();
+
+    public Task<List<MeuralItem>?> PickAsync(List<MeuralItem> availableItems)
+    {
+        _available = availableItems;
+        _selected.Clear();
+        _filter = "";
+        _visible = true;
+        _tcs = new TaskCompletionSource<List<MeuralItem>?>();
+        StateHasChanged();
+        return _tcs.Task;
+    }
+
+    private void Toggle(MeuralItem item, bool isChecked)
+    {
+        if (isChecked) _selected.Add(item);
+        else _selected.Remove(item);
+    }
+
+    private void Cancel() => Resolve(null);
+
+    private void Confirm() => Resolve(_selected.ToList());
+
+    private void Resolve(List<MeuralItem>? result)
+    {
+        _visible = false;
+        var tcs = _tcs;
+        _tcs = null;
+        StateHasChanged();
+        tcs?.TrySetResult(result);
+    }
+}

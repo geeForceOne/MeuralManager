@@ -1,0 +1,41 @@
+@inject MeuralSessionState Session
+
+@if (_src is not null)
+{
+    <img src="@_src" class="@CssClass" alt="" loading="@Loading" @onerror="HandleError" />
+}
+else
+{
+    <div class="@PlaceholderClass"></div>
+}
+
+@code {
+    [Parameter, EditorRequired] public MeuralItem Item { get; set; } = null!;
+    [Parameter] public string? CssClass { get; set; }
+    [Parameter] public string Loading { get; set; } = "lazy";
+
+    private string PlaceholderClass => string.IsNullOrWhiteSpace(CssClass) ? "thumb-placeholder" : $"{CssClass} thumb-placeholder";
+
+    private long? _itemId;
+    private string? _src;
+
+    // Points at the local image cache instead of Meural's signed CDN URL - the endpoint serves
+    // the cached file if there is one, or downloads and caches it on the spot if not. That signed
+    // URL also expires, but this endpoint refreshes it server-side, so there's no client-side
+    // retry dance needed here anymore.
+    protected override void OnParametersSet()
+    {
+        if (Item.Id == _itemId)
+            return;
+
+        _itemId = Item.Id;
+        _src = Item.Id is long id && !string.IsNullOrEmpty(Session.Email)
+            ? $"/image-cache/{Uri.EscapeDataString(Session.Email)}/{id}"
+            : null;
+    }
+
+    // A broken image here means the item genuinely has no photo left on the account (or the
+    // cache endpoint failed) - not a stale-URL problem, since the endpoint already handles that -
+    // so just fall back to the placeholder instead of retrying.
+    private void HandleError() => _src = null;
+}

@@ -1,0 +1,151 @@
+@page "/settings"
+@inject UserPreferencesStore Preferences
+@inject MeuralSessionState Session
+
+<div class="page-header" data-eyebrow="Preferences">
+    <h1>Settings</h1>
+</div>
+
+<div class="settings-group">
+    <h2>Dashboard</h2>
+    <div class="setting-row">
+        <div>
+            <div class="setting-label">Picture of the Moment</div>
+            <div class="muted setting-description">Show a random uploaded image on the Dashboard.</div>
+        </div>
+        <label class="switch">
+            <input type="checkbox" checked="@_showPictureOfTheMoment" @onchange="OnToggleChanged" />
+            <span class="switch-slider"></span>
+        </label>
+    </div>
+</div>
+
+<div class="settings-group">
+    <h2>AI Naming</h2>
+    <p class="muted setting-description">
+        On the Playlists page, get an AI-suggested name for an image (handy for uploads with a generic
+        name like "IMG_1234"). Nothing is renamed automatically - you always review and can edit the
+        suggestion before it's applied.
+    </p>
+
+    <label class="field">
+        <span>Provider</span>
+        <select class="text-input" @bind="_provider">
+            <option value="@AiProvider.Claude">Claude</option>
+            <option value="@AiProvider.ChatGpt">ChatGPT</option>
+        </select>
+    </label>
+
+    @if (_provider == AiProvider.Claude)
+    {
+        <label class="field">
+            <span>Claude API key</span>
+            <input class="text-input" type="password" autocomplete="off" @bind="_claudeApiKey" @bind:event="oninput" placeholder="sk-ant-..." />
+        </label>
+
+        <label class="field">
+            <span>Claude workspace ID <span class="muted">(only if you see a "workspace id is required" error)</span></span>
+            <input class="text-input" autocomplete="off" @bind="_claudeWorkspaceId" @bind:event="oninput" placeholder="wrkspc_..." />
+        </label>
+
+        <label class="field">
+            <span>Claude model</span>
+            <input class="text-input" autocomplete="off" @bind="_claudeModel" @bind:event="oninput" placeholder="@AiSettings.DefaultClaudeModel" />
+        </label>
+    }
+    else
+    {
+        <label class="field">
+            <span>OpenAI API key</span>
+            <input class="text-input" type="password" autocomplete="off" @bind="_openAiApiKey" @bind:event="oninput" placeholder="sk-..." />
+        </label>
+
+        <label class="field">
+            <span>OpenAI model</span>
+            <input class="text-input" autocomplete="off" @bind="_openAiModel" @bind:event="oninput" placeholder="@AiSettings.DefaultOpenAiModel" />
+        </label>
+    }
+
+    <label class="field">
+        <span>Rename style</span>
+        <select class="text-input" @bind="_renameStyle">
+            <option value="@RenameStyle.Professional">Professional - clear, descriptive</option>
+            <option value="@RenameStyle.Creative">Creative - a bit playful or funny</option>
+        </select>
+    </label>
+
+    <button type="button" class="btn btn-primary" @onclick="SaveAiSettingsAsync" disabled="@_savingAi">
+        @(_savingAi ? "Saving…" : "Save AI settings")
+    </button>
+    @if (_aiSaved)
+    {
+        <span class="muted" style="margin-left: 10px;">Saved.</span>
+    }
+</div>
+
+@code {
+    private bool _showPictureOfTheMoment = true;
+
+    private AiProvider _provider = AiProvider.Claude;
+    private RenameStyle _renameStyle = RenameStyle.Professional;
+    private string _claudeApiKey = "";
+    private string _claudeWorkspaceId = "";
+    private string _claudeModel = "";
+    private string _openAiApiKey = "";
+    private string _openAiModel = "";
+    private bool _savingAi;
+    private bool _aiSaved;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+
+        var prefs = await Preferences.LoadAsync();
+        _showPictureOfTheMoment = prefs.ShowPictureOfTheMoment;
+
+        var aiSettings = await Session.LoadAiSettingsAsync();
+        _provider = aiSettings.Provider;
+        _renameStyle = aiSettings.RenameStyle;
+        _claudeApiKey = aiSettings.ClaudeApiKey ?? "";
+        _claudeWorkspaceId = aiSettings.ClaudeWorkspaceId ?? "";
+        _claudeModel = aiSettings.ClaudeModel ?? "";
+        _openAiApiKey = aiSettings.OpenAiApiKey ?? "";
+        _openAiModel = aiSettings.OpenAiModel ?? "";
+
+        StateHasChanged();
+    }
+
+    private async Task OnToggleChanged(ChangeEventArgs e)
+    {
+        _showPictureOfTheMoment = (bool)e.Value!;
+        // Loads-then-patches (rather than constructing a fresh record) so this doesn't clobber
+        // other preferences saved elsewhere, like the Playlists page's remembered splitter widths.
+        var prefs = await Preferences.LoadAsync();
+        await Preferences.SaveAsync(prefs with { ShowPictureOfTheMoment = _showPictureOfTheMoment });
+    }
+
+    private async Task SaveAiSettingsAsync()
+    {
+        _savingAi = true;
+        _aiSaved = false;
+        try
+        {
+            await Session.SaveAiSettingsAsync(new AiSettings
+            {
+                Provider = _provider,
+                RenameStyle = _renameStyle,
+                ClaudeApiKey = string.IsNullOrWhiteSpace(_claudeApiKey) ? null : _claudeApiKey.Trim(),
+                ClaudeWorkspaceId = string.IsNullOrWhiteSpace(_claudeWorkspaceId) ? null : _claudeWorkspaceId.Trim(),
+                ClaudeModel = string.IsNullOrWhiteSpace(_claudeModel) ? null : _claudeModel.Trim(),
+                OpenAiApiKey = string.IsNullOrWhiteSpace(_openAiApiKey) ? null : _openAiApiKey.Trim(),
+                OpenAiModel = string.IsNullOrWhiteSpace(_openAiModel) ? null : _openAiModel.Trim(),
+            });
+            _aiSaved = true;
+        }
+        finally
+        {
+            _savingAi = false;
+        }
+    }
+}

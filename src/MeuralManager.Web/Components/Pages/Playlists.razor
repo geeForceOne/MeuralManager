@@ -1,0 +1,1209 @@
+@page "/playlists"
+@implements IDisposable
+@inject MeuralSessionState Session
+@inject IJSRuntime JS
+@inject BackupArchiveService BackupArchive
+@inject ImageCacheManager ImageCache
+@inject UserPreferencesStore Preferences
+@inject NavigationManager Nav
+
+<div class="page-header">
+    <h1>Playlists</h1>
+    <p class="page-subtitle">Browse, create, and manage your Meural playlists.</p>
+</div>
+
+@if (!Session.HasScanned)
+{
+    <p class="empty-state">Scan your account from the <a href="/">Dashboard</a> first.</p>
+}
+else
+{
+    <div class="playlist-toolbar-bar">
+        @if (_selectedPlaylist is null)
+        {
+            <p class="muted">Select a playlist to manage it.</p>
+        }
+        else
+        {
+            <h2 class="playlist-toolbar-title">@_selectedPlaylist.Name</h2>
+            <span class="muted">@_selectedItems.Count item(s)@(_loadingItems ? " — loading…" : "")</span>
+            @if (_busy)
+            {
+                <span class="spinner spinner-inline" title="Working…"></span>
+                <button type="button" class="btn btn-ghost btn-sm" @onclick="Cancel">Cancel</button>
+            }
+            <div class="toolbar-spacer"></div>
+            <div class="dropdown">
+                <button type="button" class="btn btn-secondary btn-sm" @onclick="ToggleFrameMenu" disabled="@_busy">
+                    Install on frame ▾
+                </button>
+                @if (_frameMenuOpen)
+                {
+                    <div class="dropdown-menu">
+                        @if (Frames.Count == 0)
+                        {
+                            <span class="dropdown-item disabled">No frames found</span>
+                        }
+                        @foreach (var frame in Frames)
+                        {
+                            <button type="button" class="dropdown-item" @onclick="() => InstallOnFrameAsync(frame)">
+                                @(frame.Alias ?? $"Frame {frame.Id}")
+                            </button>
+                        }
+                    </div>
+                }
+            </div>
+            <button type="button" class="btn btn-ghost btn-sm" @onclick="() => _showActivityLog = !_showActivityLog">
+                @(_showActivityLog ? "Hide Activity Log" : "Activity Log")
+            </button>
+            <button type="button" class="btn btn-ghost btn-sm" @onclick="RenamePlaylistAsync" disabled="@_busy">Rename</button>
+            <button type="button" class="btn btn-danger btn-sm" @onclick="DeletePlaylistAsync" disabled="@_busy">Delete</button>
+        }
+    </div>
+
+    <div class="playlist-layout" id="playlistSplit">
+        <div class="pane pane-list">
+            <div class="pane-list-toolbar">
+                <button type="button" class="btn btn-primary btn-sm" @onclick="CreatePlaylistAsync" disabled="@_busy">New</button>
+                <input class="text-input" placeholder="Filter…" @bind="_filter" @bind:event="oninput" />
+            </div>
+
+            @{
+                var playlists = FilteredSortedPlaylists;
+                var frameNames = Session.GetFrameNamesByGallery();
+            }
+
+            <div class="table-wrap playlist-table-wrap">
+                <table class="data-table playlist-table">
+                    <thead>
+                        <tr>
+                            <th class="sortable" @onclick="() => SortBy(SortColumn.Name)">Name@(SortIndicator(SortColumn.Name))</th>
+                            <th class="sortable id-col" @onclick="() => SortBy(SortColumn.Items)">Items@(SortIndicator(SortColumn.Items))</th>
+                            <th>Frames</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (playlists.Count == 0)
+                        {
+                            <tr><td colspan="3" class="empty-state">No playlists.</td></tr>
+                        }
+                        @foreach (var gallery in playlists)
+                        {
+                            var frames = gallery.Id is long gid && frameNames.TryGetValue(gid, out var names) && names.Count > 0
+                                ? string.Join(", ", names)
+                                : "—";
+                            <tr class="@(gallery.Id == _selectedPlaylist?.Id ? "selected" : "")" @onclick="() => SelectAsync(gallery)">
+                                <td class="playlist-name-cell" title="@gallery.Name">@(gallery.Name ?? "(untitled)")</td>
+                                <td class="muted id-col">@(gallery.ItemIds?.Count ?? 0)</td>
+                                <td class="muted frames-cell" title="@frames">@frames</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="split-handle"></div>
+
+        <div class="pane pane-items">
+            @if (_selectedPlaylist is null)
+            {
+                <p class="empty-state">Select a playlist on the left.</p>
+            }
+            else
+            {
+                <div class="items-toolbar">
+                    <button type="button" class="btn btn-secondary btn-sm" @onclick="OpenAddExistingAsync" disabled="@_busy">
+                        Add existing
+                    </button>
+                    <label class="btn btn-secondary btn-sm file-btn">
+                        Upload new
+                        <InputFile id="playlistUploadInput" OnChange="UploadNewAsync" multiple accept="image/*" disabled="@_busy" />
+                    </label>
+                    <button type="button" class="btn btn-secondary btn-sm" @onclick="ToggleSelectAll" disabled="@(_busy || _selectedItems.Count == 0)">
+                        @(AllItemsSelected ? "Clear selection" : "Select all")
+                    </button>
+                    <button type="button" class="btn btn-secondary btn-sm" @onclick="DeselectAll" disabled="@(_busy || _selectedItemIds.Count == 0)">
+                        Deselect all
+                    </button>
+                    <button type="button" class="btn btn-secondary btn-sm" @onclick="SelectNoName" disabled="@(_busy || !AnyGenericNamedItems)">
+                        Select NoName
+                    </button>
+                    <button type="button" class="btn btn-secondary btn-sm" @onclick="DownloadSelectedAsync" disabled="@(_busy || _selectedItemIds.Count == 0)">
+                        Download selected (@_selectedItemIds.Count)
+                    </button>
+                    <button type="button" class="btn btn-secondary btn-sm" @onclick="AiRenameSelectedAsync" disabled="@(_busy || _selectedItemIds.Count == 0)">
+                        AI rename (@_selectedItemIds.Count)
+                    </button>
+                    <button type="button" class="btn btn-danger btn-sm" @onclick="RemoveSelectedAsync" disabled="@(_busy || _selectedItemIds.Count == 0)">
+                        Remove selected (@_selectedItemIds.Count)
+                    </button>
+                    @if (_busy)
+                    {
+                        <span class="spinner spinner-inline"></span>
+                        <button type="button" class="btn btn-ghost btn-sm" @onclick="Cancel">Cancel</button>
+                    }
+                </div>
+
+                @if (_loadingItems && _selectedItems.Count == 0)
+                {
+                    <div class="items-loading">
+                        <span class="spinner"></span>
+                        <p class="muted">Loading items…</p>
+                    </div>
+                }
+                else if (_selectedItems.Count == 0)
+                {
+                    <p class="empty-state">This playlist is empty.</p>
+                }
+                else
+                {
+                    <div class="item-grid-wrap">
+                        <div class="item-grid">
+                            <Virtualize Items="ItemRows" Context="row" ItemSize="182">
+                                <div class="item-grid-row">
+                                    @foreach (var item in row)
+                                    {
+                                        var id = item.Id ?? 0;
+                                        var nameLooksGeneric = FileNaming.LooksGeneric(item.Name);
+                                        <div class="item-tile @(_selectedItemIds.Contains(id) ? "selected" : "") @(_previewItem?.Id == item.Id ? "previewing" : "") @(nameLooksGeneric ? "name-generic" : "")"
+                                             @onclick="() => SetPreview(item)">
+                                            <input type="checkbox" checked="@_selectedItemIds.Contains(id)"
+                                                   @onclick:stopPropagation="true"
+                                                   @onchange="e => ToggleItemSelection(id, (bool)e.Value!)" />
+                                            @if (EditedItemIds.Contains(id))
+                                            {
+                                                <span class="item-tile-edited-badge" title="Cropped - original available (Revert in the preview pane)">
+                                                    <svg width="11" height="11" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                        <rect x="2" y="5" width="14" height="8" rx="1.2" stroke="currentColor" stroke-width="2.2" />
+                                                    </svg>
+                                                </span>
+                                            }
+                                            @if (_aiSettings.HasKeyFor(AiProvider.Claude) || _aiSettings.HasKeyFor(AiProvider.ChatGpt))
+                                            {
+                                                <div class="item-tile-suggest-group" title="@(nameLooksGeneric ? "This name looks generic - suggest a name with AI" : "Suggest a name with AI")">
+                                                    @if (_aiSettings.HasKeyFor(AiProvider.Claude))
+                                                    {
+                                                        <button type="button" class="item-tile-suggest-btn" title="Suggest a name with Claude"
+                                                                disabled="@(_suggestingItemId == id)"
+                                                                @onclick="() => SuggestNameAsync(item, AiProvider.Claude)" @onclick:stopPropagation="true">
+                                                            @if (_suggestingItemId == id && _suggestingProvider == AiProvider.Claude)
+                                                            {
+                                                                <span class="spinner spinner-inline"></span>
+                                                            }
+                                                            else
+                                                            {
+                                                                <span class="item-tile-suggest-label">C</span>
+                                                            }
+                                                        </button>
+                                                    }
+                                                    @if (_aiSettings.HasKeyFor(AiProvider.ChatGpt))
+                                                    {
+                                                        <button type="button" class="item-tile-suggest-btn" title="Suggest a name with ChatGPT"
+                                                                disabled="@(_suggestingItemId == id)"
+                                                                @onclick="() => SuggestNameAsync(item, AiProvider.ChatGpt)" @onclick:stopPropagation="true">
+                                                            @if (_suggestingItemId == id && _suggestingProvider == AiProvider.ChatGpt)
+                                                            {
+                                                                <span class="spinner spinner-inline"></span>
+                                                            }
+                                                            else
+                                                            {
+                                                                <span class="item-tile-suggest-label">G</span>
+                                                            }
+                                                        </button>
+                                                    }
+                                                </div>
+                                            }
+                                            <ItemImage Item="item" />
+                                            <EditableItemName Item="item"
+                                                              OnRenamed="updated => HandleItemRenamed(item, updated)"
+                                                              OnRenameFailed="msg => HandleRenameFailed(msg)" />
+                                        </div>
+                                    }
+                                </div>
+                            </Virtualize>
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+
+        <div class="split-handle" data-resize="next"></div>
+
+        <div class="pane pane-preview">
+            <h3 class="pane-preview-title">Preview</h3>
+            @if (_previewItem is null)
+            {
+                <p class="empty-state">Select an image to preview</p>
+            }
+            else
+            {
+                <div class="preview-body">
+                    <ItemImage Item="_previewItem" CssClass="preview-image" />
+                    <p class="preview-name">@(_previewItem.Name ?? "(untitled)")</p>
+                    @if (!string.IsNullOrWhiteSpace(_previewItem.CreatedAt))
+                    {
+                        <p class="muted preview-meta">Uploaded @_previewItem.CreatedAt</p>
+                    }
+                    <div class="preview-crop-actions">
+                        <button type="button" class="btn btn-secondary btn-sm btn-icon" disabled="@_busy"
+                                title="Crop to 16:9 (landscape)" aria-label="Crop to 16:9 landscape"
+                                @onclick="() => CropAndReplacePreviewAsync(CropDialog.CropAspect.Wide)">
+                            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <rect x="2" y="5" width="14" height="8" rx="1.2" stroke="currentColor" stroke-width="1.6" />
+                            </svg>
+                        </button>
+                        <button type="button" class="btn btn-secondary btn-sm btn-icon" disabled="@_busy"
+                                title="Crop to 9:16 (portrait)" aria-label="Crop to 9:16 portrait"
+                                @onclick="() => CropAndReplacePreviewAsync(CropDialog.CropAspect.Tall)">
+                            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <rect x="5" y="2" width="8" height="14" rx="1.2" stroke="currentColor" stroke-width="1.6" />
+                            </svg>
+                        </button>
+                        @if (_previewItem.Id is long previewId && Session.HasEditOriginal(previewId))
+                        {
+                            <button type="button" class="btn btn-ghost btn-sm" disabled="@_busy"
+                                    title="Restore the original, uncropped version"
+                                    @onclick="RevertPreviewToOriginalAsync">
+                                Revert to original
+                            </button>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@if (_showActivityLog)
+{
+    <ActivityLogPanel Log="_log" />
+}
+<ConfirmDialog @ref="_confirm" />
+<PromptDialog @ref="_prompt" />
+<AddExistingItemsModal @ref="_picker" />
+<CropDialog @ref="_cropDialog" />
+<Toast @ref="_toast" />
+
+@code {
+    private enum SortColumn { Name, Items }
+
+    // Matches .item-grid-row's fixed 5-column CSS grid - Virtualize needs a fixed-height row to
+    // measure, which only works with a fixed column count (see app.css's .item-grid comment).
+    private const int ItemGridColumns = 5;
+
+    private MeuralGallery? _selectedPlaylist;
+    private List<MeuralItem> _selectedItems = [];
+    private readonly HashSet<long> _selectedItemIds = [];
+    private MeuralItem? _previewItem;
+    private bool _loadingItems;
+    private bool _busy;
+    private bool _frameMenuOpen;
+    private bool _showActivityLog;
+    private long? _suggestingItemId;
+    private AiProvider? _suggestingProvider;
+    private AiSettings _aiSettings = new();
+    private string _filter = "";
+    private SortColumn _sortColumn = SortColumn.Name;
+    private bool _sortAscending = true;
+    private CancellationTokenSource? _cts;
+    private CancellationTokenSource? _selectCts;
+    private readonly ActivityLog _log = new();
+    private ConfirmDialog _confirm = null!;
+    private PromptDialog _prompt = null!;
+    private AddExistingItemsModal _picker = null!;
+    private CropDialog _cropDialog = null!;
+    private Toast _toast = null!;
+    private DotNetObjectReference<Playlists>? _splitterRef;
+
+    private MeuralApiClient Client => Session.Client!;
+    private List<MeuralGallery> AllPlaylists => Session.AllGalleriesCache ?? [];
+    private List<MeuralDevice> Frames => Session.AllDevicesCache ?? [];
+    private List<MeuralItem[]> ItemRows => _selectedItems.Chunk(ItemGridColumns).ToList();
+    private bool AllItemsSelected => _selectedItems.Count > 0 && _selectedItems.All(i => i.Id is long id && _selectedItemIds.Contains(id));
+    private bool AnyGenericNamedItems => _selectedItems.Any(i => FileNaming.LooksGeneric(i.Name));
+    private HashSet<long> EditedItemIds => Session.GetEditedItemIds();
+
+    private List<MeuralGallery> FilteredSortedPlaylists
+    {
+        get
+        {
+            IEnumerable<MeuralGallery> query = AllPlaylists;
+            if (!string.IsNullOrWhiteSpace(_filter))
+                query = query.Where(p => (p.Name ?? "").Contains(_filter, StringComparison.OrdinalIgnoreCase));
+
+            query = _sortColumn switch
+            {
+                SortColumn.Items => _sortAscending
+                    ? query.OrderBy(p => p.ItemIds?.Count ?? 0)
+                    : query.OrderByDescending(p => p.ItemIds?.Count ?? 0),
+                _ => _sortAscending
+                    ? query.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
+                    : query.OrderByDescending(p => p.Name, StringComparer.OrdinalIgnoreCase),
+            };
+
+            return query.ToList();
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _log.Changed += HandleLogChanged;
+        // Loaded once up front (rather than per-click) so the tile grid can decide which of the
+        // two AI suggest buttons to show without an async round trip per tile.
+        _aiSettings = await Session.LoadAiSettingsAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+
+        _splitterRef = DotNetObjectReference.Create(this);
+        var prefs = await Preferences.LoadAsync();
+        await JS.InvokeVoidAsync("meuralSplitter.init", "playlistSplit", _splitterRef,
+            new { list = prefs.PlaylistListPaneWidth, preview = prefs.PreviewPaneWidth });
+    }
+
+    // Invoked by splitter.js once per drag (on mouseup, not per mousemove) so a pane's width
+    // survives a reload - see UserPreferencesStore.StoredPreferences.
+    [JSInvokable]
+    public async Task OnSplitterResized(string paneKey, double width)
+    {
+        var prefs = await Preferences.LoadAsync();
+        var updated = paneKey switch
+        {
+            "list" => prefs with { PlaylistListPaneWidth = width },
+            "preview" => prefs with { PreviewPaneWidth = width },
+            _ => prefs,
+        };
+        await Preferences.SaveAsync(updated);
+    }
+
+    private void SortBy(SortColumn column)
+    {
+        if (_sortColumn == column) _sortAscending = !_sortAscending;
+        else { _sortColumn = column; _sortAscending = true; }
+    }
+
+    private string SortIndicator(SortColumn column) =>
+        _sortColumn != column ? "" : _sortAscending ? " ▲" : " ▼";
+
+    private async Task SelectAsync(MeuralGallery gallery)
+    {
+        // Cancels any reload still in flight for a previously-selected playlist, so switching
+        // playlists quickly can't have a slow, superseded request win the race and overwrite
+        // what's on screen with the wrong playlist's items after the fact.
+        _selectCts?.Cancel();
+        _selectCts?.Dispose();
+        var cts = _selectCts = new CancellationTokenSource();
+
+        _selectedPlaylist = gallery;
+        // Show what the shared account-wide cache already knows about this playlist's items
+        // instantly, instead of blanking the grid while ReloadSelectedItemsAsync below re-fetches
+        // the authoritative list from the API - selecting a playlist you've already scanned
+        // shouldn't feel like a network round trip.
+        _selectedItems = GetCachedItems(gallery);
+        _selectedItemIds.Clear();
+        _previewItem = null;
+        _frameMenuOpen = false;
+        if (gallery.Id is not long galleryId)
+            return;
+        await ReloadSelectedItemsAsync(galleryId, cts.Token);
+    }
+
+    private List<MeuralItem> GetCachedItems(MeuralGallery gallery)
+    {
+        if (gallery.ItemIds is not { Count: > 0 } itemIds || Session.AllItemsCache is not { Count: > 0 } allItems)
+            return [];
+
+        var byId = allItems.Where(i => i.Id.HasValue).ToDictionary(i => i.Id!.Value);
+        return itemIds.Where(byId.ContainsKey).Select(id => byId[id]).ToList();
+    }
+
+    private async Task ReloadSelectedItemsAsync(long galleryId, CancellationToken ct = default)
+    {
+        _loadingItems = true;
+        try
+        {
+            var items = await Client.GetGalleryItemsAsync(galleryId, ct: ct);
+
+            // A newer SelectAsync call may have cancelled this token but let a response that was
+            // already in flight land anyway - don't let a slow, superseded reload apply its
+            // (wrong-playlist) results on top of whatever's now selected.
+            if (ct.IsCancellationRequested)
+                return;
+
+            _selectedItems = items;
+            await Session.SetGalleryItemsAsync(galleryId, items);
+            _selectedPlaylist = AllPlaylists.FirstOrDefault(p => p.Id == galleryId) ?? _selectedPlaylist;
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by selecting a different playlist - not a real failure.
+        }
+        catch (Exception ex)
+        {
+            _log.Append($"Couldn't load items for \"{_selectedPlaylist?.Name}\": {ex.Message}");
+            _toast.ShowError($"Couldn't load items for \"{_selectedPlaylist?.Name}\": {ex.Message}");
+        }
+        finally
+        {
+            // Same reasoning as above - a cancelled, superseded reload must not clear the loading
+            // flag out from under the newer request that's still legitimately in progress.
+            if (!ct.IsCancellationRequested)
+                _loadingItems = false;
+        }
+    }
+
+    private async Task CreatePlaylistAsync()
+    {
+        var name = await _prompt.PromptAsync("New Playlist", "Playlist name:");
+        if (string.IsNullOrWhiteSpace(name))
+            return;
+
+        _busy = true;
+        var cts = _cts = new CancellationTokenSource();
+        MeuralGallery? created = null;
+        try
+        {
+            var gallery = await Client.CreateGalleryAsync(name, cts.Token);
+            _log.Append($"Created playlist \"{gallery.Name}\".");
+            await Session.AddGalleryAsync(gallery);
+            created = gallery;
+        }
+        catch (OperationCanceledException)
+        {
+            HandleCancellation(cts, "Creating the playlist");
+        }
+        catch (Exception ex)
+        {
+            _log.Append($"Couldn't create playlist: {ex.Message}");
+            _toast.ShowError($"Couldn't create playlist: {ex.Message}");
+        }
+        finally
+        {
+            _cts?.Dispose();
+            _cts = null;
+            _busy = false;
+        }
+
+        // Runs as a fully separate step, after the create operation's own busy/cancellation
+        // scope has closed out - matching exactly how selecting a playlist by clicking its row
+        // already works, instead of nesting it inside CreatePlaylistAsync's still-active _busy
+        // and _cts (the one path that was structurally different from the always-working one).
+        if (created is not null)
+            await SelectAsync(created);
+    }
+
+    private async Task RenamePlaylistAsync()
+    {
+        if (_selectedPlaylist?.Id is not long galleryId)
+            return;
+
+        var name = await _prompt.PromptAsync("Rename Playlist", "Playlist name:", _selectedPlaylist.Name ?? "");
+        if (string.IsNullOrWhiteSpace(name))
+            return;
+
+        _busy = true;
+        var cts = _cts = new CancellationTokenSource();
+        try
+        {
+            var updated = await Client.RenameGalleryAsync(galleryId, name, cts.Token);
+            _log.Append($"Renamed playlist to \"{updated.Name}\".");
+            await Session.RenameGalleryAsync(galleryId, updated.Name);
+            _selectedPlaylist = AllPlaylists.FirstOrDefault(p => p.Id == galleryId);
+        }
+        catch (OperationCanceledException)
+        {
+            HandleCancellation(cts, "Renaming the playlist");
+        }
+        catch (Exception ex)
+        {
+            _log.Append($"Couldn't rename playlist: {ex.Message}");
+            _toast.ShowError($"Couldn't rename playlist: {ex.Message}");
+        }
+        finally
+        {
+            _cts?.Dispose();
+            _cts = null;
+            _busy = false;
+        }
+    }
+
+    private async Task DeletePlaylistAsync()
+    {
+        if (_selectedPlaylist is not { Id: long galleryId } playlist)
+            return;
+
+        if (!await _confirm.AskAsync(
+            "Delete playlist?",
+            $"This will PERMANENTLY delete the playlist \"{playlist.Name}\" (the uploads inside it are not affected).",
+            "Delete"))
+            return;
+
+        _busy = true;
+        var cts = _cts = new CancellationTokenSource();
+        try
+        {
+            var outcome = await Client.DeleteGalleryAsync(galleryId, cts.Token);
+            _log.Append(outcome.Success
+                ? $"Deleted playlist \"{playlist.Name}\"."
+                : $"Couldn't delete playlist \"{playlist.Name}\" (server said: {outcome.StatusCode}).");
+            if (!outcome.Success)
+                _toast.ShowError($"Couldn't delete playlist \"{playlist.Name}\" (server said: {outcome.StatusCode}).");
+
+            if (outcome.Success)
+            {
+                await Session.RemoveGalleryAsync(galleryId);
+                _selectedPlaylist = null;
+                _selectedItems = [];
+                _selectedItemIds.Clear();
+                _previewItem = null;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            HandleCancellation(cts, "Deleting the playlist");
+        }
+        catch (Exception ex)
+        {
+            _log.Append($"Couldn't delete playlist: {ex.Message}");
+            _toast.ShowError($"Couldn't delete playlist: {ex.Message}");
+        }
+        finally
+        {
+            _cts?.Dispose();
+            _cts = null;
+            _busy = false;
+        }
+    }
+
+    private async Task OpenAddExistingAsync()
+    {
+        if (_selectedPlaylist?.Id is not long galleryId)
+            return;
+
+        var excludeIds = _selectedItems.Where(i => i.Id.HasValue).Select(i => i.Id!.Value).ToHashSet();
+        var available = (Session.AllItemsCache ?? []).Where(i => i.Id is long id && !excludeIds.Contains(id)).ToList();
+
+        var picked = await _picker.PickAsync(available);
+        if (picked is null || picked.Count == 0)
+            return;
+
+        _busy = true;
+        var cts = _cts = new CancellationTokenSource();
+        try
+        {
+            _log.Append($"Adding {picked.Count} image(s) to \"{_selectedPlaylist.Name}\"...");
+            var summary = await PlaylistService.AddItemsToGalleryAsync(Client, galleryId, picked, _log.AsProgress(), cts.Token);
+            _log.Append($"Finished: {summary.Done} added, {summary.Failed} failed.");
+            if (summary.Failed > 0)
+                _toast.ShowError($"{summary.Failed} of {picked.Count} image(s) couldn't be added.");
+            await ReloadSelectedItemsAsync(galleryId, cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            HandleCancellation(cts, "Adding images");
+        }
+        catch (Exception ex)
+        {
+            _log.Append($"Couldn't add images: {ex.Message}");
+            _toast.ShowError($"Couldn't add images: {ex.Message}");
+        }
+        finally
+        {
+            _cts?.Dispose();
+            _cts = null;
+            _busy = false;
+        }
+    }
+
+    private async Task UploadNewAsync(InputFileChangeEventArgs e)
+    {
+        if (_selectedPlaylist?.Id is not long galleryId)
+            return;
+
+        var files = e.GetMultipleFiles(25);
+        if (files.Count == 0)
+            return;
+
+        // Same crop dialog as the preview pane's "Crop 16:9/9:16" buttons, shown once per picked
+        // file before anything is uploaded - fed a blob: URL built client-side straight from the
+        // <input>'s own FileList, so cropping a not-yet-uploaded file needs no server round trip.
+        // allowSkip offers an "Upload as-is" button here (not shown for the preview-pane replace
+        // flow, where there's nothing sensible to upload unmodified). Cancelling a given file's
+        // crop just skips that file rather than aborting the batch.
+        var tempDir = Path.Combine(Path.GetTempPath(), "meuralmanager-web-uploads", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        // Keyed by the path that actually gets uploaded, to a path holding that file's pre-crop
+        // bytes (if it was cropped) - so a freshly-uploaded-and-cropped image can be non-
+        // destructively reverted too, same as cropping an already-uploaded item.
+        var originalPathsByUploadPath = new Dictionary<string, string>();
+        var uploadPaths = new List<string>();
+        for (var i = 0; i < files.Count; i++)
+        {
+            var file = files[i];
+            var blobUrl = await JS.InvokeAsync<string?>("meuralCropper.blobUrlForFile", "playlistUploadInput", i);
+            if (blobUrl is null)
+                continue;
+
+            try
+            {
+                var result = await _cropDialog.CropAsync(blobUrl, CropDialog.CropAspect.Wide, allowSkip: true);
+                if (result.Outcome == CropDialog.CropOutcome.Cancelled)
+                    continue;
+
+                string uploadPath;
+                if (result.Outcome == CropDialog.CropOutcome.Applied && result.CroppedPath is string croppedPath)
+                {
+                    // The crop dialog always exports JPEG, regardless of the original's format.
+                    uploadPath = Path.Combine(tempDir, $"{Path.GetFileNameWithoutExtension(file.Name)}.jpg");
+                    File.Move(croppedPath, uploadPath, overwrite: true);
+
+                    var originalPath = Path.Combine(tempDir, $"original-{i}-{file.Name}");
+                    await using (var browserStream = file.OpenReadStream(maxAllowedSize: 25_000_000))
+                    await using (var fileStream = File.Create(originalPath))
+                        await browserStream.CopyToAsync(fileStream);
+                    originalPathsByUploadPath[uploadPath] = originalPath;
+                }
+                else
+                {
+                    // Uploaded as-is - keep the original extension so the content-type Meural is
+                    // sent (guessed from the file extension) actually matches these bytes.
+                    uploadPath = Path.Combine(tempDir, file.Name);
+                    await using var browserStream = file.OpenReadStream(maxAllowedSize: 25_000_000);
+                    await using var fileStream = File.Create(uploadPath);
+                    await browserStream.CopyToAsync(fileStream);
+                }
+
+                uploadPaths.Add(uploadPath);
+            }
+            finally
+            {
+                await JS.InvokeVoidAsync("meuralCropper.revokeBlobUrl", blobUrl);
+            }
+        }
+
+        if (uploadPaths.Count == 0)
+        {
+            try { Directory.Delete(tempDir, recursive: true); } catch (IOException) { }
+            return;
+        }
+
+        _busy = true;
+        var cts = _cts = new CancellationTokenSource();
+        try
+        {
+            _log.Append($"Uploading {uploadPaths.Count} image(s) to \"{_selectedPlaylist.Name}\"...");
+            var summary = await PlaylistService.UploadAndAddToGalleryAsync(Client, galleryId, uploadPaths, _log.AsProgress(), cts.Token);
+            _log.Append($"Finished: {summary.Done} uploaded, {summary.Failed} failed.");
+            if (summary.Failed > 0)
+                _toast.ShowError($"{summary.Failed} of {uploadPaths.Count} upload(s) failed.");
+
+            foreach (var (path, uploadedItem) in summary.Uploaded)
+            {
+                if (originalPathsByUploadPath.TryGetValue(path, out var originalPath) && uploadedItem.Id is long newId)
+                    Session.SaveUploadOriginal(newId, originalPath);
+            }
+
+            await ReloadSelectedItemsAsync(galleryId, cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            HandleCancellation(cts, "Uploading");
+        }
+        catch (Exception ex)
+        {
+            _log.Append($"Upload failed: {ex.Message}");
+            _toast.ShowError($"Upload failed: {ex.Message}");
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, recursive: true); } catch (IOException) { }
+            _cts?.Dispose();
+            _cts = null;
+            _busy = false;
+        }
+    }
+
+    private async Task RemoveSelectedAsync()
+    {
+        if (_selectedPlaylist is not { Id: long galleryId } playlist)
+            return;
+
+        var items = _selectedItems.Where(i => i.Id is long id && _selectedItemIds.Contains(id)).ToList();
+        if (items.Count == 0)
+            return;
+
+        if (!await _confirm.AskAsync(
+            "Remove images?",
+            $"Remove {items.Count} image(s) from \"{playlist.Name}\"? The uploads themselves won't be deleted.",
+            "Remove"))
+            return;
+
+        _busy = true;
+        var cts = _cts = new CancellationTokenSource();
+        try
+        {
+            _log.Append($"Removing {items.Count} image(s) from \"{playlist.Name}\"...");
+            var summary = await PlaylistService.RemoveItemsFromGalleryAsync(Client, galleryId, items, _log.AsProgress(), cts.Token);
+            _log.Append($"Finished: {summary.Done} removed, {summary.Failed} failed.");
+            if (summary.Failed > 0)
+                _toast.ShowError($"{summary.Failed} of {items.Count} image(s) couldn't be removed.");
+            _selectedItemIds.Clear();
+            if (_previewItem is not null && items.Any(i => i.Id == _previewItem.Id))
+                _previewItem = null;
+            await ReloadSelectedItemsAsync(galleryId, cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            HandleCancellation(cts, "Removing images");
+        }
+        catch (Exception ex)
+        {
+            _log.Append($"Couldn't remove images: {ex.Message}");
+            _toast.ShowError($"Couldn't remove images: {ex.Message}");
+        }
+        finally
+        {
+            _cts?.Dispose();
+            _cts = null;
+            _busy = false;
+        }
+    }
+
+    private async Task InstallOnFrameAsync(MeuralDevice frame)
+    {
+        _frameMenuOpen = false;
+        if (_selectedPlaylist is not { Id: long galleryId } playlist || frame.Id is not long deviceId)
+            return;
+
+        _busy = true;
+        var cts = _cts = new CancellationTokenSource();
+        try
+        {
+            var outcome = await Client.AddGalleryToDeviceAsync(deviceId, galleryId, cts.Token);
+            var frameLabel = frame.Alias ?? $"Frame {deviceId}";
+            _log.Append(outcome.Success
+                ? $"Installed \"{playlist.Name}\" on \"{frameLabel}\"."
+                : $"Couldn't install on \"{frameLabel}\" (server said: {outcome.StatusCode}).");
+
+            if (outcome.Success)
+            {
+                await Session.AddDeviceGalleryAsync(deviceId, playlist);
+                // Belt-and-braces: the cache patch above should already be picked up by the
+                // automatic re-render after this handler returns, but force it explicitly too
+                // so the Frames column is never left showing stale data.
+                StateHasChanged();
+                // Fixed-position and always visible regardless of scroll position, unlike the
+                // Frames column update above which might be off-screen.
+                _toast.ShowSuccess($"Installed \"{playlist.Name}\" on \"{frameLabel}\".");
+            }
+            else
+            {
+                _toast.ShowError($"Couldn't install on \"{frameLabel}\" (server said: {outcome.StatusCode}).");
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            HandleCancellation(cts, "Installing on frame");
+        }
+        catch (Exception ex)
+        {
+            _log.Append($"Couldn't install playlist on frame: {ex.Message}");
+            _toast.ShowError($"Couldn't install playlist on frame: {ex.Message}");
+        }
+        finally
+        {
+            _cts?.Dispose();
+            _cts = null;
+            _busy = false;
+        }
+    }
+
+    private void ToggleFrameMenu() => _frameMenuOpen = !_frameMenuOpen;
+
+    private void ToggleItemSelection(long id, bool isChecked)
+    {
+        if (isChecked) _selectedItemIds.Add(id);
+        else _selectedItemIds.Remove(id);
+    }
+
+    private void ToggleSelectAll()
+    {
+        if (AllItemsSelected)
+        {
+            _selectedItemIds.Clear();
+        }
+        else
+        {
+            foreach (var item in _selectedItems)
+            {
+                if (item.Id is long id)
+                    _selectedItemIds.Add(id);
+            }
+        }
+    }
+
+    // Unconditionally clears the selection - unlike ToggleSelectAll's "Clear selection" state,
+    // which only appears once every item happens to be selected, this always works regardless
+    // of how the current (possibly partial) selection was built up.
+    private void DeselectAll() => _selectedItemIds.Clear();
+
+    // Replaces the current selection with just the items FileNaming.LooksGeneric() flagged -
+    // the same heuristic driving each tile's "name-generic" badge - so a whole playlist's
+    // no-name uploads can be selected in one click instead of hunting for them individually.
+    private void SelectNoName()
+    {
+        _selectedItemIds.Clear();
+        foreach (var item in _selectedItems)
+        {
+            if (item.Id is long id && FileNaming.LooksGeneric(item.Name))
+                _selectedItemIds.Add(id);
+        }
+    }
+
+    private async Task DownloadSelectedAsync()
+    {
+        if (_selectedPlaylist is not { } playlist)
+            return;
+
+        var items = _selectedItems.Where(i => i.Id is long id && _selectedItemIds.Contains(id)).ToList();
+        if (items.Count == 0)
+            return;
+
+        _busy = true;
+        var cts = _cts = new CancellationTokenSource();
+        try
+        {
+            var workingDir = BackupArchive.BeginWorkingDirectory(out var id);
+            _log.Append($"Preparing {items.Count} image(s) for download...");
+            var summary = await BackupService.BackupItemsAsync(items, workingDir, _log.AsProgress(), cts.Token);
+            _log.Append($"Prepared {summary.Saved} image(s) ({summary.Failed} failed, {summary.Skipped} skipped).");
+
+            var playlistName = FileNaming.SanitizeFileName(playlist.Name ?? "playlist");
+            var fileName = $"{playlistName}-{DateTime.Now:yyyyMMdd-HHmmss}.zip";
+            BackupArchive.FinishAsZip(id, workingDir, fileName);
+            _log.Append("Download ready - starting download.");
+            // Triggers the browser's normal file download directly (the endpoint responds with
+            // Content-Disposition: attachment) instead of showing a link the user has to click.
+            Nav.NavigateTo($"/backups/{id}/download", forceLoad: true);
+        }
+        catch (OperationCanceledException)
+        {
+            HandleCancellation(cts, "Preparing the download");
+        }
+        catch (Exception ex)
+        {
+            _log.Append($"Couldn't prepare download: {ex.Message}");
+            _toast.ShowError($"Couldn't prepare download: {ex.Message}");
+        }
+        finally
+        {
+            _cts?.Dispose();
+            _cts = null;
+            _busy = false;
+        }
+    }
+
+    private void SetPreview(MeuralItem item) => _previewItem = item;
+
+    // Meural has no "replace this item's image" endpoint (see PlaylistService.ReplaceItemImageAsync),
+    // so this uploads the cropped result as a new item, re-adds it to every playlist the original
+    // belonged to, and deletes the original - then reloads the current playlist's items from the
+    // API so the grid/preview reflect the swap. Other playlists the original item was also in stay
+    // correct membership-wise (RemoveItemsAsync below purges the old id everywhere), but won't show
+    // the new item in their own cached grid until the next full rescan.
+    private async Task CropAndReplacePreviewAsync(CropDialog.CropAspect aspect)
+    {
+        if (_previewItem is not { Id: long oldId } item || string.IsNullOrEmpty(Session.Email))
+            return;
+
+        var imageUrl = $"/image-cache/{Uri.EscapeDataString(Session.Email)}/{oldId}";
+        var result = await _cropDialog.CropAsync(imageUrl, aspect);
+        if (result.Outcome != CropDialog.CropOutcome.Applied || result.CroppedPath is not string croppedPath)
+            return;
+
+        _busy = true;
+        var cts = _cts = new CancellationTokenSource();
+        try
+        {
+            var galleryIds = AllPlaylists
+                .Where(g => g.Id.HasValue && (g.ItemIds?.Contains(oldId) ?? false))
+                .Select(g => g.Id!.Value)
+                .ToList();
+
+            // Makes this crop revertible: if oldId is already a crop of something, its stored
+            // original gets carried forward below (RecordCropOriginal); otherwise its current
+            // (pre-crop) bytes need grabbing now, from the local image cache, since oldId's
+            // image is about to be deleted from Meural entirely.
+            var freshOriginalPath = Session.HasEditOriginal(oldId)
+                ? null
+                : await ImageCache.GetOrDownloadImageAsync(Session.Email, oldId, cts.Token);
+
+            _log.Append($"Cropping and replacing \"{item.Name}\"...");
+            var newItem = await PlaylistService.ReplaceItemImageAsync(Client, item, galleryIds, croppedPath, _log.AsProgress(), cts.Token);
+
+            if (newItem.Id is long newId)
+                Session.RecordCropOriginal(oldId, newId, freshOriginalPath);
+
+            await Session.RemoveItemsAsync([oldId]);
+
+            if (_selectedPlaylist?.Id is long galleryId)
+                await ReloadSelectedItemsAsync(galleryId, cts.Token);
+
+            _previewItem = _selectedItems.FirstOrDefault(i => i.Id == newItem.Id) ?? newItem;
+            _toast.ShowSuccess("Image replaced.");
+        }
+        catch (OperationCanceledException)
+        {
+            HandleCancellation(cts, "Cropping");
+        }
+        catch (Exception ex)
+        {
+            _log.Append($"Couldn't replace \"{item.Name}\": {ex.Message}");
+            _toast.ShowError($"Couldn't replace \"{item.Name}\": {ex.Message}");
+        }
+        finally
+        {
+            try { File.Delete(croppedPath); } catch (IOException) { }
+            _cts?.Dispose();
+            _cts = null;
+            _busy = false;
+        }
+    }
+
+    // The reverse of CropAndReplacePreviewAsync: re-uploads the locally-stored pre-crop
+    // original as a new item (via the same ReplaceItemImageAsync shape, just with the original
+    // as the source file), swaps it into the same playlists, and deletes the cropped item -
+    // then clears the now-consumed stored original, since the restored item is back to a clean,
+    // un-edited state with nothing left to revert.
+    private async Task RevertPreviewToOriginalAsync()
+    {
+        if (_previewItem is not { Id: long currentId } item)
+            return;
+
+        var originalPath = Session.GetEditOriginalPath(currentId);
+        if (originalPath is null)
+            return;
+
+        if (!await _confirm.AskAsync(
+            "Revert to original?",
+            $"Restore the original, uncropped version of \"{item.Name}\"? The current (cropped) version will be deleted.",
+            "Revert"))
+            return;
+
+        _busy = true;
+        var cts = _cts = new CancellationTokenSource();
+        try
+        {
+            var galleryIds = AllPlaylists
+                .Where(g => g.Id.HasValue && (g.ItemIds?.Contains(currentId) ?? false))
+                .Select(g => g.Id!.Value)
+                .ToList();
+
+            _log.Append($"Restoring the original version of \"{item.Name}\"...");
+            var restoredItem = await PlaylistService.ReplaceItemImageAsync(Client, item, galleryIds, originalPath, _log.AsProgress(), cts.Token);
+            Session.ClearEditOriginal(currentId);
+            await Session.RemoveItemsAsync([currentId]);
+
+            if (_selectedPlaylist?.Id is long galleryId)
+                await ReloadSelectedItemsAsync(galleryId, cts.Token);
+
+            _previewItem = _selectedItems.FirstOrDefault(i => i.Id == restoredItem.Id) ?? restoredItem;
+            _toast.ShowSuccess("Reverted to the original image.");
+        }
+        catch (OperationCanceledException)
+        {
+            HandleCancellation(cts, "Reverting");
+        }
+        catch (Exception ex)
+        {
+            _log.Append($"Couldn't revert \"{item.Name}\": {ex.Message}");
+            _toast.ShowError($"Couldn't revert \"{item.Name}\": {ex.Message}");
+        }
+        finally
+        {
+            _cts?.Dispose();
+            _cts = null;
+            _busy = false;
+        }
+    }
+
+    private void HandleItemRenamed(MeuralItem oldItem, MeuralItem updated)
+    {
+        var idx = _selectedItems.FindIndex(i => i.Id == oldItem.Id);
+        if (idx >= 0)
+            _selectedItems[idx] = _selectedItems[idx] with { Name = updated.Name };
+        if (_previewItem is not null && _previewItem.Id == oldItem.Id)
+            _previewItem = _previewItem with { Name = updated.Name };
+
+        _log.Append($"Renamed \"{oldItem.Name}\" to \"{updated.Name}\".");
+    }
+
+    private void HandleRenameFailed(string message)
+    {
+        _log.Append($"Couldn't rename image: {message}");
+        _toast.ShowError($"Couldn't rename image: {message}");
+    }
+
+    // Asks the given provider (bypassing whatever's set as the default in Settings - the tile
+    // shows one button per provider so either can be used with a single click regardless of
+    // which is configured as default) for a name suggestion and applies it directly - no review
+    // step, same as the toolbar's AI rename.
+    private async Task SuggestNameAsync(MeuralItem item, AiProvider provider)
+    {
+        if (item.Id is not long itemId)
+            return;
+
+        if (string.IsNullOrWhiteSpace(item.Image))
+        {
+            _toast.ShowError("This image has no source URL to analyze.");
+            return;
+        }
+
+        var aiSettings = (await Session.LoadAiSettingsAsync()) with { Provider = provider };
+        if (!aiSettings.HasKeyFor(provider))
+        {
+            _toast.ShowError($"No API key configured for {provider} - add one in Settings.");
+            return;
+        }
+
+        _suggestingItemId = itemId;
+        _suggestingProvider = provider;
+        try
+        {
+            string suggestion;
+            try
+            {
+                suggestion = await ImageNamingService.SuggestNameAsync(aiSettings, item.Image, _selectedPlaylist?.Name, _log.AsProgress(), CancellationToken.None);
+            }
+            catch (AiNamingException ex)
+            {
+                _log.Append($"Couldn't suggest a name for \"{item.Name}\": {ex.Message}");
+                _toast.ShowError(ex.Message);
+                return;
+            }
+
+            var updated = await Client.RenameItemAsync(itemId, suggestion);
+            await Session.RenameItemAsync(itemId, updated.Name);
+            HandleItemRenamed(item, updated);
+        }
+        catch (Exception ex)
+        {
+            _log.Append($"Couldn't rename \"{item.Name}\": {ex.Message}");
+            _toast.ShowError($"Couldn't rename \"{item.Name}\": {ex.Message}");
+        }
+        finally
+        {
+            _suggestingItemId = null;
+            _suggestingProvider = null;
+        }
+    }
+
+    // Same idea as SuggestNameAsync but for the whole current selection at once, applied
+    // directly (no review step) - fetch a suggestion per item and rename it right away, politely
+    // paced the same as the Meural bulk operations below.
+    private async Task AiRenameSelectedAsync()
+    {
+        var items = _selectedItems
+            .Where(i => i.Id is long id && _selectedItemIds.Contains(id) && !string.IsNullOrWhiteSpace(i.Image))
+            .ToList();
+        if (items.Count == 0)
+        {
+            _toast.ShowError("None of the selected images have a source URL to analyze.");
+            return;
+        }
+
+        var aiSettings = await Session.LoadAiSettingsAsync();
+        if (!aiSettings.HasKeyFor(aiSettings.Provider))
+        {
+            _toast.ShowError($"No API key configured for {aiSettings.Provider} - add one in Settings.");
+            return;
+        }
+
+        _busy = true;
+        var cts = _cts = new CancellationTokenSource();
+        try
+        {
+            _log.Append($"AI-renaming {items.Count} image(s) with {aiSettings.Provider}...");
+            int done = 0, failed = 0;
+            for (var i = 0; i < items.Count; i++)
+            {
+                var item = (MeuralItem)items[i];
+                if (item.Id is not long itemId)
+                    continue;
+
+                try
+                {
+                    var suggestion = await ImageNamingService.SuggestNameAsync(
+                        aiSettings, item.Image!, _selectedPlaylist?.Name, _log.AsProgress(), cts.Token);
+                    var updated = await Client.RenameItemAsync(itemId, suggestion, cts.Token);
+                    await Session.RenameItemAsync(itemId, updated.Name);
+                    HandleItemRenamed(item, updated);
+                    done++;
+                }
+                catch (AiNamingException ex)
+                {
+                    failed++;
+                    _log.Append($"[{i + 1}/{items.Count}] Couldn't suggest a name for \"{item.Name}\": {ex.Message}");
+                }
+                catch (Exception ex)
+                {
+                    failed++;
+                    _log.Append($"[{i + 1}/{items.Count}] Couldn't rename \"{item.Name}\": {ex.Message}");
+                }
+
+                if (i < items.Count - 1)
+                    await Task.Delay(TimeSpan.FromMilliseconds(300), cts.Token);
+            }
+
+            _log.Append($"AI rename finished: {done} renamed, {failed} failed.");
+            if (failed > 0)
+                _toast.ShowError($"{failed} of {items.Count} image(s) couldn't be renamed.");
+            else
+                _toast.ShowSuccess($"Renamed {done} image(s).");
+        }
+        catch (OperationCanceledException)
+        {
+            HandleCancellation(cts, "AI rename");
+        }
+        finally
+        {
+            _cts?.Dispose();
+            _cts = null;
+            _busy = false;
+        }
+    }
+
+    private void Cancel() => _cts?.Cancel();
+
+    // Distinguishes the user explicitly clicking Cancel (cts.Token gets cancelled) from the
+    // HttpClient request timeout firing on its own (an OperationCanceledException that reports
+    // as cancelled without our token ever being cancelled) - the latter is a real failure that
+    // deserves a toast, not a silent "Cancelled." nobody sees.
+    private void HandleCancellation(CancellationTokenSource cts, string operationLabel)
+    {
+        if (cts.Token.IsCancellationRequested)
+        {
+            _log.Append("Cancelled.");
+            return;
+        }
+
+        _log.Append($"{operationLabel} timed out.");
+        _toast.ShowError($"{operationLabel} timed out - the server took too long to respond.");
+    }
+
+    private void HandleLogChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        _log.Changed -= HandleLogChanged;
+        _cts?.Cancel();
+        _cts?.Dispose();
+        _selectCts?.Cancel();
+        _selectCts?.Dispose();
+        _splitterRef?.Dispose();
+    }
+}

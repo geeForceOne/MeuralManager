@@ -1,0 +1,75 @@
+@if (_visible)
+{
+    <div class="modal-backdrop" @onclick="() => Resolve(null)">
+        <div class="modal-card" @onclick:stopPropagation="true">
+            <h3>@_title</h3>
+            <label class="field">
+                <span>@_label</span>
+                <input class="text-input" @bind="_value" @bind:event="oninput" @onkeydown="HandleKeyDown" @ref="_inputRef" />
+            </label>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-ghost" @onclick="() => Resolve(null)">Cancel</button>
+                <button type="button" class="btn btn-primary" disabled="@string.IsNullOrWhiteSpace(_value)" @onclick="Submit">
+                    OK
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _visible;
+    private bool _focusPending;
+    private string _title = "";
+    private string _label = "";
+    private string _value = "";
+    private ElementReference _inputRef;
+    private TaskCompletionSource<string?>? _tcs;
+
+    public Task<string?> PromptAsync(string title, string label, string initialValue = "")
+    {
+        _title = title;
+        _label = label;
+        _value = initialValue;
+        _visible = true;
+        _focusPending = true;
+        _tcs = new TaskCompletionSource<string?>();
+        StateHasChanged();
+        return _tcs.Task;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_focusPending)
+            return;
+
+        _focusPending = false;
+        try
+        {
+            await _inputRef.FocusAsync();
+        }
+        catch (JSException)
+        {
+            // The dialog was closed again before focus could land - harmless.
+        }
+    }
+
+    private void HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(_value))
+            Submit();
+        else if (e.Key == "Escape")
+            Resolve(null);
+    }
+
+    private void Submit() => Resolve(_value.Trim());
+
+    private void Resolve(string? result)
+    {
+        _visible = false;
+        var tcs = _tcs;
+        _tcs = null;
+        StateHasChanged();
+        tcs?.TrySetResult(result);
+    }
+}

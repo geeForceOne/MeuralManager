@@ -1,0 +1,325 @@
+@page "/all-pictures"
+@implements IDisposable
+@inject MeuralSessionState Session
+@inject IJSRuntime JS
+
+<div class="page-header">
+    <h1>All Pictures</h1>
+    <p class="page-subtitle">Every uploaded image in your account, and which playlist(s) it's in.</p>
+</div>
+
+@if (!Session.HasScanned)
+{
+    <p class="empty-state">Scan your account from the <a href="/">Dashboard</a> first.</p>
+}
+else
+{
+    var playlistNames = Session.GetPlaylistNamesByItem();
+    var items = GetFilteredSortedItems(playlistNames);
+
+    <div class="toolbar">
+        <span class="toolbar-summary">@items.Count of @(Session.AllItemsCache?.Count ?? 0) image(s)</span>
+        <div class="toolbar-spacer"></div>
+        @if (_busy)
+        {
+            <span class="spinner spinner-inline"></span>
+            <button type="button" class="btn btn-ghost btn-sm" @onclick="Cancel">Cancel</button>
+        }
+        <input class="text-input" placeholder="Search by name or playlist…" @bind="_filter" @bind:event="oninput" />
+    </div>
+
+    <div class="playlist-layout" id="allPicturesSplit">
+        <div class="pane pane-items">
+            @if (items.Count == 0)
+            {
+                <p class="empty-state">No images match "@_filter".</p>
+            }
+            else
+            {
+                <div class="table-wrap playlist-table-wrap">
+                    <table class="data-table playlist-table">
+                        <thead>
+                            <tr>
+                                <th class="thumb-col"></th>
+                                <th class="sortable" @onclick="() => SortBy(SortColumn.Name)">Name@(SortIndicator(SortColumn.Name))</th>
+                                <th class="sortable" @onclick="() => SortBy(SortColumn.Playlists)">Playlists@(SortIndicator(SortColumn.Playlists))</th>
+                                <th class="sortable" @onclick="() => SortBy(SortColumn.Uploaded)">Uploaded@(SortIndicator(SortColumn.Uploaded))</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <Virtualize Items="items" Context="item" ItemSize="57">
+                                @{
+                                    var playlists = item.Id is long pid && playlistNames.TryGetValue(pid, out var names) && names.Count > 0
+                                        ? string.Join(", ", names)
+                                        : "—";
+                                }
+                                <tr class="@(_previewItem?.Id == item.Id ? "selected" : "")" @onclick="() => SetPreview(item)">
+                                    <td class="thumb-cell">
+                                        <ItemImage Item="item" CssClass="thumb-sm" />
+                                    </td>
+                                    <td class="playlist-name-cell">
+                                        <EditableItemName Item="item" OnRenamed="HandleRenamed" OnRenameFailed="HandleRenameFailed" />
+                                    </td>
+                                    <td class="muted frames-cell" title="@playlists">@playlists</td>
+                                    <td class="muted">@(item.CreatedAt ?? "(unknown)")</td>
+                                    <td @onclick:stopPropagation="true">
+                                        @if (_aiSettings.HasKeyFor(AiProvider.Claude))
+                                        {
+                                            <button type="button" class="btn btn-secondary btn-sm" title="Suggest a name with Claude"
+                                                    disabled="@(_suggestingItemId == item.Id)"
+                                                    @onclick="() => SuggestNameAsync(item, AiProvider.Claude)">
+                                                @if (_suggestingItemId == item.Id && _suggestingProvider == AiProvider.Claude)
+                                                {
+                                                    <span class="spinner spinner-inline"></span>
+                                                }
+                                                else
+                                                {
+                                                    <span>Claude</span>
+                                                }
+                                            </button>
+                                        }
+                                        @if (_aiSettings.HasKeyFor(AiProvider.ChatGpt))
+                                        {
+                                            <button type="button" class="btn btn-secondary btn-sm" title="Suggest a name with ChatGPT"
+                                                    disabled="@(_suggestingItemId == item.Id)"
+                                                    @onclick="() => SuggestNameAsync(item, AiProvider.ChatGpt)">
+                                                @if (_suggestingItemId == item.Id && _suggestingProvider == AiProvider.ChatGpt)
+                                                {
+                                                    <span class="spinner spinner-inline"></span>
+                                                }
+                                                else
+                                                {
+                                                    <span>GPT</span>
+                                                }
+                                            </button>
+                                        }
+                                        <button type="button" class="btn btn-danger btn-sm" @onclick="() => DeleteItemAsync(item)" disabled="@_busy">
+                                            Delete
+                                        </button>
+                                    </td>
+                                </tr>
+                            </Virtualize>
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+
+        <div class="split-handle" data-resize="next"></div>
+
+        <div class="pane pane-preview">
+            <h3 class="pane-preview-title">Preview</h3>
+            @if (_previewItem is null)
+            {
+                <p class="empty-state">Select an image to preview</p>
+            }
+            else
+            {
+                <div class="preview-body">
+                    <ItemImage Item="_previewItem" CssClass="preview-image" />
+                    <p class="preview-name">@(_previewItem.Name ?? "(untitled)")</p>
+                    @if (!string.IsNullOrWhiteSpace(_previewItem.CreatedAt))
+                    {
+                        <p class="muted preview-meta">Uploaded @_previewItem.CreatedAt</p>
+                    }
+                    @{
+                        var previewPlaylists = _previewItem.Id is long previewId && playlistNames.TryGetValue(previewId, out var previewNames) && previewNames.Count > 0
+                            ? string.Join(", ", previewNames)
+                            : "—";
+                    }
+                    <p class="muted preview-meta">Playlists: @previewPlaylists</p>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+<ConfirmDialog @ref="_confirm" />
+<Toast @ref="_toast" />
+
+@code {
+    private enum SortColumn { Name, Playlists, Uploaded }
+
+    private string _filter = "";
+    private SortColumn _sortColumn = SortColumn.Name;
+    private bool _sortAscending = true;
+    private MeuralItem? _previewItem;
+    private bool _busy;
+    private CancellationTokenSource? _cts;
+    private ConfirmDialog _confirm = null!;
+    private Toast _toast = null!;
+    private AiSettings _aiSettings = new();
+    private long? _suggestingItemId;
+    private AiProvider? _suggestingProvider;
+
+    private MeuralApiClient Client => Session.Client!;
+
+    protected override async Task OnInitializedAsync() => _aiSettings = await Session.LoadAiSettingsAsync();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+            await JS.InvokeVoidAsync("meuralSplitter.init", "allPicturesSplit");
+    }
+
+    // Single-image AI rename, applied directly (no review popup) - same behavior as the Playlists
+    // page's per-tile Claude/ChatGPT buttons, just without playlist-name context since this page
+    // isn't scoped to one playlist.
+    private async Task SuggestNameAsync(MeuralItem item, AiProvider provider)
+    {
+        if (item.Id is not long itemId)
+            return;
+
+        if (string.IsNullOrWhiteSpace(item.Image))
+        {
+            _toast.ShowError("This image has no source URL to analyze.");
+            return;
+        }
+
+        var aiSettings = _aiSettings with { Provider = provider };
+        if (!aiSettings.HasKeyFor(provider))
+        {
+            _toast.ShowError($"No API key configured for {provider} - add one in Settings.");
+            return;
+        }
+
+        _suggestingItemId = itemId;
+        _suggestingProvider = provider;
+        try
+        {
+            var suggestion = await ImageNamingService.SuggestNameAsync(aiSettings, item.Image, null, null, CancellationToken.None);
+            var updated = await Client.RenameItemAsync(itemId, suggestion);
+            await Session.RenameItemAsync(itemId, updated.Name);
+            HandleRenamed(updated);
+        }
+        catch (AiNamingException ex)
+        {
+            _toast.ShowError(ex.Message);
+        }
+        catch (Exception ex)
+        {
+            _toast.ShowError($"Couldn't rename \"{item.Name}\": {ex.Message}");
+        }
+        finally
+        {
+            _suggestingItemId = null;
+            _suggestingProvider = null;
+        }
+    }
+
+    private List<MeuralItem> GetFilteredSortedItems(Dictionary<long, List<string>> playlistNames)
+    {
+        IEnumerable<MeuralItem> query = Session.AllItemsCache ?? [];
+
+        if (!string.IsNullOrWhiteSpace(_filter))
+        {
+            query = query.Where(i =>
+                (i.Name ?? "").Contains(_filter, StringComparison.OrdinalIgnoreCase) ||
+                (i.Id is long id && playlistNames.TryGetValue(id, out var names) &&
+                    names.Any(n => n.Contains(_filter, StringComparison.OrdinalIgnoreCase))));
+        }
+
+        string PlaylistKey(MeuralItem i) =>
+            i.Id is long id && playlistNames.TryGetValue(id, out var names) ? string.Join(", ", names) : "";
+
+        query = _sortColumn switch
+        {
+            SortColumn.Playlists => _sortAscending
+                ? query.OrderBy(PlaylistKey, StringComparer.OrdinalIgnoreCase)
+                : query.OrderByDescending(PlaylistKey, StringComparer.OrdinalIgnoreCase),
+            SortColumn.Uploaded => _sortAscending
+                ? query.OrderBy(i => i.CreatedAt, StringComparer.OrdinalIgnoreCase)
+                : query.OrderByDescending(i => i.CreatedAt, StringComparer.OrdinalIgnoreCase),
+            _ => _sortAscending
+                ? query.OrderBy(i => i.Name, StringComparer.OrdinalIgnoreCase)
+                : query.OrderByDescending(i => i.Name, StringComparer.OrdinalIgnoreCase),
+        };
+
+        return query.ToList();
+    }
+
+    private void SortBy(SortColumn column)
+    {
+        if (_sortColumn == column) _sortAscending = !_sortAscending;
+        else { _sortColumn = column; _sortAscending = true; }
+    }
+
+    private string SortIndicator(SortColumn column) =>
+        _sortColumn != column ? "" : _sortAscending ? " ▲" : " ▼";
+
+    private void SetPreview(MeuralItem item) => _previewItem = item;
+
+    private void HandleRenamed(MeuralItem item)
+    {
+        if (_previewItem?.Id == item.Id)
+            _previewItem = item;
+        _toast.ShowSuccess($"Renamed to \"{item.Name}\".");
+    }
+
+    private void HandleRenameFailed(string message) => _toast.ShowError($"Couldn't rename image: {message}");
+
+    private async Task DeleteItemAsync(MeuralItem item)
+    {
+        if (item.Id is not long itemId)
+            return;
+
+        var inPlaylist = Session.GetPlaylistNamesByItem().ContainsKey(itemId);
+        var warning = inPlaylist ? " It's also used in a playlist, and will be removed from there too." : "";
+        var displayName = item.Name ?? "this image";
+
+        if (!await _confirm.AskAsync(
+            "Delete image?",
+            $"This will PERMANENTLY delete \"{displayName}\" from your Meural account. This cannot be undone.{warning}",
+            "Delete"))
+            return;
+
+        _busy = true;
+        var cts = _cts = new CancellationTokenSource();
+        try
+        {
+            var outcome = await Client.DeleteItemAsync(itemId, cts.Token);
+            if (outcome.Success)
+            {
+                _toast.ShowSuccess($"Deleted \"{displayName}\".");
+                await Session.RemoveItemsAsync([itemId]);
+                if (_previewItem?.Id == itemId)
+                    _previewItem = null;
+            }
+            else
+            {
+                _toast.ShowError($"Couldn't delete \"{displayName}\" (server said: {outcome.StatusCode}).");
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            HandleCancellation(cts, "Deleting image");
+        }
+        catch (Exception ex)
+        {
+            _toast.ShowError($"Delete failed: {ex.Message}");
+        }
+        finally
+        {
+            _cts?.Dispose();
+            _cts = null;
+            _busy = false;
+        }
+    }
+
+    private void Cancel() => _cts?.Cancel();
+
+    private void HandleCancellation(CancellationTokenSource cts, string operationLabel)
+    {
+        if (cts.Token.IsCancellationRequested)
+            return;
+
+        _toast.ShowError($"{operationLabel} timed out - the server took too long to respond.");
+    }
+
+    public void Dispose()
+    {
+        _cts?.Cancel();
+        _cts?.Dispose();
+    }
+}

@@ -1,0 +1,178 @@
+@page "/orphan-uploads"
+@implements IDisposable
+@inject MeuralSessionState Session
+@inject BackupArchiveService BackupArchive
+
+<div class="page-header">
+    <h1>Orphan Uploads</h1>
+    <p class="page-subtitle">Uploaded images that aren't referenced by any playlist.</p>
+</div>
+
+@if (!Session.HasScanned)
+{
+    <p class="empty-state">Scan your account from the <a href="/">Dashboard</a> first.</p>
+}
+else
+{
+    <div class="toolbar">
+        <span class="toolbar-summary">@Orphans.Count orphan(s) found</span>
+        <div class="toolbar-spacer"></div>
+
+        @if (_busy)
+        {
+            <span class="spinner spinner-inline"></span>
+            <button class="btn btn-ghost" @onclick="Cancel">Cancel</button>
+        }
+
+        @if (Orphans.Count > 0)
+        {
+            @if (_backupUrl is not null)
+            {
+                <a class="btn btn-secondary" href="@_backupUrl">Download backup.zip</a>
+            }
+            else
+            {
+                <button class="btn btn-secondary" @onclick="BackupAsync" disabled="@_busy">
+                    @(_phase == Phase.BackingUp ? "Backing up…" : "Back up as ZIP")
+                </button>
+            }
+            <button class="btn btn-danger" @onclick="DeleteAllAsync" disabled="@_busy">
+                @(_phase == Phase.Deleting ? "Deleting…" : "Delete all")
+            </button>
+        }
+    </div>
+
+    @if (Orphans.Count == 0)
+    {
+        <p class="empty-state">No orphan uploads found — nice and tidy.</p>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th class="thumb-col"></th>
+                        <th>Name</th>
+                        <th>Uploaded</th>
+                        <th class="id-col">Item ID</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <Virtualize Items="Orphans" Context="item" ItemSize="57">
+                        <tr>
+                            <td class="thumb-cell">
+                                <ItemImage Item="item" CssClass="thumb-sm" />
+                            </td>
+                            <td>@(item.Name ?? "(untitled)")</td>
+                            <td class="muted">@(item.CreatedAt ?? "(unknown)")</td>
+                            <td class="id-col muted">@item.Id</td>
+                        </tr>
+                    </Virtualize>
+                </tbody>
+            </table>
+        </div>
+    }
+}
+
+<ActivityLogPanel Log="_log" />
+<ConfirmDialog @ref="_confirm" />
+
+@code {
+    private enum Phase { Idle, BackingUp, Deleting }
+
+    private Phase _phase = Phase.Idle;
+    private bool _busy => _phase != Phase.Idle;
+    private string? _backupUrl;
+    private CancellationTokenSource? _cts;
+    private readonly ActivityLog _log = new();
+    private ConfirmDialog _confirm = null!;
+
+    private MeuralApiClient Client => Session.Client!;
+
+    private List<MeuralItem> Orphans => Session.HasScanned
+        ? CleanupService.FindOrphanItems(Session.AllItemsCache ?? [], Session.AllGalleriesCache ?? [])
+        : [];
+
+    protected override void OnInitialized() => _log.Changed += HandleLogChanged;
+
+    private void HandleLogChanged() => InvokeAsync(StateHasChanged);
+
+    private void Cancel() => _cts?.Cancel();
+
+    private async Task BackupAsync()
+    {
+        var orphans = Orphans;
+        _phase = Phase.BackingUp;
+        _backupUrl = null;
+        var cts = _cts = new CancellationTokenSource();
+        try
+        {
+            var workingDir = BackupArchive.BeginWorkingDirectory(out var id);
+            _log.Append($"Saving copies of {orphans.Count} image(s)...");
+            var summary = await BackupService.BackupItemsAsync(orphans, workingDir, _log.AsProgress(), cts.Token);
+            _log.Append($"Backup finished: {summary.Saved} saved, {summary.Failed} failed, {summary.Skipped} skipped.");
+
+            var fileName = $"meural-orphans-{DateTime.Now:yyyyMMdd-HHmmss}.zip";
+            BackupArchive.FinishAsZip(id, workingDir, fileName);
+            _backupUrl = $"/backups/{id}/download";
+            _log.Append("Backup ready - use the download link above.");
+        }
+        catch (OperationCanceledException)
+        {
+            _log.Append("Backup cancelled.");
+        }
+        catch (Exception ex)
+        {
+            _log.Append($"Backup failed: {ex.Message}");
+        }
+        finally
+        {
+            _cts?.Dispose();
+            _cts = null;
+            _phase = Phase.Idle;
+        }
+    }
+
+    private async Task DeleteAllAsync()
+    {
+        var orphans = Orphans;
+        if (!await _confirm.AskAsync(
+            "Delete orphan uploads?",
+            $"This will PERMANENTLY delete {orphans.Count} orphaned upload(s) from your Meural account. This cannot be undone.",
+            "Delete all"))
+            return;
+
+        _phase = Phase.Deleting;
+        var cts = _cts = new CancellationTokenSource();
+        try
+        {
+            _log.Append($"Deleting {orphans.Count} item(s) from Meural...");
+            var summary = await CleanupService.DeleteItemsAsync(Client, orphans, _log.AsProgress(), cts.Token);
+            _log.Append($"Finished deleting: {summary.Done} removed, {summary.Failed} failed.");
+            await Session.RemoveItemsAsync(orphans.Where(i => i.Id.HasValue).Select(i => i.Id!.Value));
+            _backupUrl = null;
+        }
+        catch (OperationCanceledException)
+        {
+            _log.Append("Delete cancelled.");
+        }
+        catch (Exception ex)
+        {
+            _log.Append($"Delete failed: {ex.Message}");
+        }
+        finally
+        {
+            _cts?.Dispose();
+            _cts = null;
+            _phase = Phase.Idle;
+        }
+    }
+
+    public void Dispose()
+    {
+        _log.Changed -= HandleLogChanged;
+        _cts?.Cancel();
+        _cts?.Dispose();
+    }
+}

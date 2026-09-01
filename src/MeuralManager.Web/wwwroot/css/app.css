@@ -1,0 +1,1552 @@
+/* ---------------------------------------------------------------------------
+   Meural Manager - hand-built design system.
+   Dark, gallery-like canvas by default (this is a tool for an art frame, after
+   all), with a light variant for those who prefer it via prefers-color-scheme.
+--------------------------------------------------------------------------- */
+
+:root {
+    --bg: #f5f4f2;
+    --bg-elevated: #ffffff;
+    --bg-sidebar: #17151b;
+    --bg-inset: #ececea;
+    --border: #ddd9d4;
+    --border-soft: #e8e5e1;
+    --text: #1c1a19;
+    --text-muted: #6b6560;
+    --text-on-dark: #f2efe9;
+    --text-on-dark-muted: #a9a29a;
+    --accent: #c8842a;
+    --accent-strong: #a86a1c;
+    --accent-soft: rgba(200, 132, 42, 0.14);
+    --danger: #b3402f;
+    --danger-strong: #93301f;
+    --danger-soft: rgba(179, 64, 47, 0.12);
+    --success: #4c7a4f;
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 16px;
+    --shadow-sm: 0 1px 2px rgba(20, 16, 8, 0.06);
+    --shadow-md: 0 8px 24px rgba(20, 16, 8, 0.10);
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg: #121114;
+        --bg-elevated: #1b1a1e;
+        --bg-sidebar: #0e0d10;
+        --bg-inset: #201f23;
+        --border: #2d2b30;
+        --border-soft: #26242a;
+        --text: #ece9e4;
+        --text-muted: #9b968f;
+        --accent: #d9974a;
+        --accent-strong: #eeb06a;
+        --accent-soft: rgba(217, 151, 74, 0.16);
+        --danger: #e0685a;
+        --danger-strong: #ec8577;
+        --danger-soft: rgba(224, 104, 90, 0.14);
+        --success: #7bbf7e;
+        --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+        --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.45);
+    }
+}
+
+* {
+    box-sizing: border-box;
+}
+
+/* Thin, rounded, theme-matched scrollbars instead of the chunky default OS ones. */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+}
+
+*::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+    background-color: var(--border);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+    background-color: var(--accent);
+}
+
+*::-webkit-scrollbar-corner {
+    background: transparent;
+}
+
+html, body {
+    height: 100%;
+}
+
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.5;
+}
+
+h1, h2, h3 {
+    margin: 0 0 4px;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+}
+
+h1 { font-size: 1.6rem; }
+h2 { font-size: 1.2rem; }
+h3 { font-size: 1.05rem; }
+
+p { margin: 0 0 12px; }
+
+a { color: var(--accent-strong); }
+
+.muted { color: var(--text-muted); }
+
+/* ---------- App shell ---------- */
+
+.app-shell {
+    display: flex;
+    height: 100vh;
+}
+
+.app-main {
+    flex: 1;
+    min-width: 0;
+    width: 100%;
+    padding: 32px 40px;
+    /* Bounded to exactly the viewport height and scrolling internally (rather than the whole
+       page scrolling) lets pages like Playlists size a "fill the rest of the screen" section
+       with plain flexbox (flex: 1; min-height: 0;) instead of guessing pixel offsets. Pages
+       that don't need that just scroll inside this box instead of at the document level -
+       visually the same, nothing else changes for them. */
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+}
+
+.session-check {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    color: var(--text-muted);
+}
+
+.error-boundary {
+    max-width: 480px;
+    margin: 10vh auto 0;
+    background: var(--bg-elevated);
+    border: 1px solid var(--danger);
+    border-radius: var(--radius-lg);
+    padding: 28px 32px;
+    text-align: center;
+}
+
+.error-boundary h2 {
+    color: var(--danger-strong);
+}
+
+.error-boundary-actions {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-top: 18px;
+}
+
+/* ---------- Sidebar ---------- */
+
+.sidebar {
+    width: 240px;
+    flex: 0 0 auto;
+    background: var(--bg-sidebar);
+    color: var(--text-on-dark);
+    display: flex;
+    flex-direction: column;
+    padding: 20px 14px;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+}
+
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 10px 22px;
+}
+
+.brand-mark {
+    color: var(--accent);
+    font-size: 1.3rem;
+}
+
+.brand-name {
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    color: var(--text-on-dark);
+}
+
+.nav-links {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.nav-link {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 9px 10px;
+    border-radius: var(--radius-sm);
+    color: var(--text-on-dark-muted);
+    text-decoration: none;
+    font-size: 0.92rem;
+    transition: background 0.12s ease, color 0.12s ease;
+}
+
+.nav-link:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-on-dark);
+}
+
+.nav-link.active {
+    background: var(--accent-soft);
+    color: var(--accent-strong);
+}
+
+.nav-icon {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 auto;
+}
+
+.sidebar-footer {
+    margin-top: auto;
+    padding-top: 14px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.signed-in-as {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 4px 10px;
+    min-width: 0;
+}
+
+.avatar {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: var(--accent-soft);
+    color: var(--accent-strong);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8rem;
+    font-weight: 700;
+    flex: 0 0 auto;
+}
+
+.signed-in-email {
+    font-size: 0.82rem;
+    color: var(--text-on-dark-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.image-cache-progress {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 0 10px;
+}
+
+.image-cache-progress-label {
+    font-size: 0.72rem;
+    color: var(--text-on-dark-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.image-cache-progress-bar {
+    width: 100%;
+    height: 4px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.12);
+    overflow: hidden;
+}
+
+.image-cache-progress-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: var(--accent);
+    transition: width 0.3s ease;
+}
+
+/* ---------- Page header ---------- */
+
+.page-header {
+    margin-bottom: 24px;
+}
+
+.page-subtitle {
+    color: var(--text-muted);
+    max-width: 62ch;
+}
+
+.version-tag {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    background: var(--bg-inset);
+    border-radius: 999px;
+    padding: 2px 9px;
+    vertical-align: middle;
+    margin-left: 6px;
+}
+
+/* ---------- Buttons ---------- */
+
+.btn {
+    appearance: none;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    padding: 9px 16px;
+    font-size: 0.88rem;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: filter 0.12s ease, opacity 0.12s ease, background 0.12s ease;
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.btn:not(:disabled):hover {
+    filter: brightness(1.06);
+}
+
+.btn-primary {
+    background: var(--accent);
+    color: #1c1305;
+}
+
+.btn-secondary {
+    background: var(--bg-inset);
+    color: var(--text);
+    border-color: var(--border);
+}
+
+.btn-ghost {
+    background: transparent;
+    color: var(--text-muted);
+    border-color: var(--border);
+}
+
+.btn-danger {
+    background: var(--danger-soft);
+    color: var(--danger-strong);
+    border-color: transparent;
+}
+
+.btn-danger:not(:disabled):hover {
+    background: var(--danger);
+    color: #fff;
+}
+
+.btn-link {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    text-decoration: underline;
+    padding: 6px 4px;
+}
+
+.btn-sm {
+    padding: 6px 11px;
+    font-size: 0.82rem;
+}
+
+.btn-block {
+    width: 100%;
+    justify-content: center;
+}
+
+.file-btn {
+    position: relative;
+    overflow: hidden;
+}
+
+.file-btn input[type="file"] {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    width: 100%;
+}
+
+/* ---------- Forms ---------- */
+
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 14px;
+    font-size: 0.86rem;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+.field input,
+.text-input {
+    font-family: inherit;
+    font-size: 0.94rem;
+    font-weight: 400;
+    color: var(--text);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 9px 12px;
+    width: 100%;
+}
+
+.field input:focus,
+.text-input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* ---------- Toolbar ---------- */
+
+.toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 18px;
+    flex-wrap: wrap;
+}
+
+.toolbar-summary {
+    color: var(--text-muted);
+    font-size: 0.88rem;
+}
+
+.toolbar-spacer {
+    flex: 1;
+}
+
+/* ---------- Cards / dashboard ---------- */
+
+.card-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 28px;
+}
+
+.tool-card {
+    display: block;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-lg);
+    padding: 22px;
+    text-decoration: none;
+    color: var(--text);
+    box-shadow: var(--shadow-sm);
+    transition: transform 0.14s ease, box-shadow 0.14s ease, border-color 0.14s ease;
+}
+
+.tool-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+    border-color: var(--accent);
+}
+
+.tool-icon {
+    width: 30px;
+    height: 30px;
+    color: var(--accent);
+    margin-bottom: 12px;
+}
+
+.tool-card p {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+
+.tool-cta {
+    color: var(--accent-strong);
+    font-weight: 600;
+    font-size: 0.86rem;
+}
+
+.info-panel {
+    background: var(--bg-inset);
+    border-radius: var(--radius-lg);
+    padding: 20px 22px;
+    width: 100%;
+}
+
+.info-panel p {
+    margin: 0;
+    color: var(--text-muted);
+}
+
+.info-panel h3 {
+    margin: 20px 0 8px;
+}
+
+.info-panel h3:first-child {
+    margin-top: 0;
+}
+
+.info-panel ul {
+    margin: 0 0 8px;
+    padding-left: 20px;
+    color: var(--text-muted);
+}
+
+.info-panel li {
+    margin-bottom: 4px;
+}
+
+/* ---------- Tables ---------- */
+
+.table-wrap {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    margin-bottom: 20px;
+}
+
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.data-table th {
+    text-align: left;
+    font-size: 0.76rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-soft);
+}
+
+.data-table td {
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--border-soft);
+    vertical-align: middle;
+}
+
+.data-table tr:last-child td {
+    border-bottom: none;
+}
+
+.thumb-col { width: 56px; }
+.id-col { width: 110px; }
+
+.thumb-cell {
+    width: 56px;
+}
+
+.thumb-sm {
+    width: 40px;
+    height: 40px;
+    border-radius: var(--radius-sm);
+    object-fit: cover;
+    display: block;
+    background: var(--bg-inset);
+}
+
+.thumb-placeholder {
+    background: var(--bg-inset);
+    border-radius: var(--radius-sm);
+}
+
+/* ---------- Item / picker tiles ---------- */
+
+.picker-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+/* Rendered as fixed-size rows (see Playlists.razor's ItemRows/Virtualize) rather than a
+   responsive auto-fill grid like .picker-grid - virtualizing a large playlist means Blazor's
+   <Virtualize> needs to measure one fixed-height row at a time, which an auto-fill grid (whose
+   column count - and therefore each item's row - depends on live container width) can't give it. */
+.item-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.item-grid-row {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(130px, 1fr));
+    gap: 12px;
+}
+
+.picker-grid {
+    /* A plain capped height (not flex:1) - .modal-card-lg only has a max-height, not a definite
+       height, so flex-grow has no real free space to distribute and the grid collapsed toward
+       zero height instead of filling the modal. This scrolls once content passes the cap, which
+       still keeps the Cancel/Add selected buttons below it (and the filter box above it) fixed
+       in place rather than scrolling out of view. */
+    max-height: 60vh;
+    overflow-y: auto;
+    margin-bottom: 0;
+}
+
+.item-tile,
+.picker-tile {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-elevated);
+    border: 2px solid var(--border-soft);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    cursor: pointer;
+    box-shadow: var(--shadow-sm);
+    transition: border-color 0.12s ease;
+}
+
+.item-tile:hover,
+.picker-tile:hover {
+    border-color: var(--accent);
+}
+
+.item-tile.selected,
+.picker-tile.selected {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.item-tile img,
+.picker-tile img,
+.item-tile .thumb-placeholder,
+.picker-tile .thumb-placeholder {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    object-fit: cover;
+    background: var(--bg-inset);
+}
+
+.item-tile input[type="checkbox"],
+.picker-tile input[type="checkbox"] {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    width: 18px;
+    height: 18px;
+    accent-color: var(--accent);
+    z-index: 1;
+}
+
+.item-tile-name,
+.picker-tile-name {
+    font-size: 0.78rem;
+    padding: 7px 8px;
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: text;
+}
+
+.item-tile-name-input {
+    width: 100%;
+    font: inherit;
+    font-size: 0.78rem;
+    padding: 6px 7px;
+    margin: 0;
+    color: var(--text);
+    background: var(--bg-elevated);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-sm, 4px);
+}
+
+/* AI "Suggest name" buttons - one per provider, so either can be used with a single click
+   regardless of which is set as default in Settings. Hidden until the tile is hovered, except on
+   a tile whose name FileNaming.LooksGeneric() flagged, where the group stays visible as a nudge -
+   and while a request for this tile is in flight, so the spinner doesn't vanish if the mouse
+   moves away mid-request. */
+/* Marks a tile whose upload has a locally-stored pre-crop original (see EditOriginalStore) -
+   sits next to the selection checkbox, out of the way of the AI-suggest buttons in the
+   opposite corner. */
+.item-tile-edited-badge {
+    position: absolute;
+    top: 8px;
+    left: 32px;
+    z-index: 1;
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(20, 16, 8, 0.55);
+    border-radius: 50%;
+    color: #fff;
+}
+
+.item-tile-suggest-group {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 1;
+    display: flex;
+    gap: 4px;
+    opacity: 0;
+    transition: opacity 0.12s ease;
+}
+
+.item-tile:hover .item-tile-suggest-group,
+.item-tile.name-generic .item-tile-suggest-group,
+.item-tile-suggest-group:has(.item-tile-suggest-btn:disabled) {
+    opacity: 1;
+}
+
+.item-tile-suggest-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    background: rgba(20, 16, 8, 0.55);
+    border: none;
+    border-radius: 50%;
+    color: #fff;
+    cursor: pointer;
+    transition: background 0.12s ease;
+}
+
+.item-tile-suggest-btn:hover {
+    background: var(--accent);
+}
+
+.item-tile-suggest-btn:disabled {
+    cursor: default;
+}
+
+.item-tile-suggest-label {
+    font-size: 0.62rem;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.item-tile.name-generic .item-tile-name {
+    color: var(--accent-strong);
+    text-decoration: underline dotted;
+    text-underline-offset: 2px;
+}
+
+/* ---------- Dashboard scan panel ---------- */
+
+.scan-panel {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-lg);
+    padding: 16px 20px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+}
+
+.scan-status {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    min-width: 220px;
+}
+
+/* ---------- Featured picture (Dashboard "Picture of the Moment") ---------- */
+
+.featured-picture {
+    position: relative;
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    margin-bottom: 24px;
+    box-shadow: var(--shadow-md);
+    border: 1px solid var(--border-soft);
+}
+
+.featured-picture img {
+    width: 100%;
+    aspect-ratio: 21 / 9;
+    object-fit: cover;
+    display: block;
+    background: var(--bg-inset);
+}
+
+.featured-picture-caption {
+    position: absolute;
+    inset: auto 0 0 0;
+    padding: 18px 22px;
+    background: linear-gradient(to top, rgba(10, 8, 6, 0.75), transparent);
+    color: #f2efe9;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.featured-picture-label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--accent-strong);
+}
+
+.featured-picture-name {
+    font-weight: 650;
+    font-size: 1.1rem;
+}
+
+/* ---------- Settings ---------- */
+
+.settings-group {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-lg);
+    padding: 20px 22px;
+    max-width: 640px;
+    margin-bottom: 20px;
+}
+
+.settings-group h2 {
+    margin-bottom: 14px;
+}
+
+.setting-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    padding: 10px 0;
+}
+
+.setting-label {
+    font-weight: 600;
+    font-size: 0.92rem;
+}
+
+.setting-description {
+    font-size: 0.82rem;
+}
+
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 42px;
+    height: 24px;
+    flex: 0 0 auto;
+    cursor: pointer;
+}
+
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.switch-slider {
+    position: absolute;
+    inset: 0;
+    background: var(--bg-inset);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.switch-slider::before {
+    content: "";
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    left: 3px;
+    top: 2px;
+    background: #fff;
+    border-radius: 50%;
+    transition: transform 0.15s ease;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.switch input:checked + .switch-slider {
+    background: var(--accent);
+    border-color: var(--accent);
+}
+
+.switch input:checked + .switch-slider::before {
+    transform: translateX(18px);
+}
+
+/* ---------- Playlists layout ---------- */
+
+.playlist-toolbar-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-lg);
+    padding: 12px 18px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+    min-height: 24px;
+}
+
+.playlist-toolbar-title {
+    margin: 0;
+}
+
+.playlist-layout {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    /* Fills whatever's left of .app-main's height after the page header and toolbar bar above
+       it (both natural-height flex siblings) - no guessed pixel offset needed. min-height: 0
+       is required here: without it, a flex item won't shrink below its content's natural size,
+       which would defeat the pane-level overflow:auto below and just grow past the viewport. */
+    flex: 1;
+    min-height: 0;
+}
+
+.pane {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-lg);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    overflow: auto;
+}
+
+.pane-list {
+    flex: 0 0 340px;
+    min-width: 220px;
+}
+
+.pane-items {
+    flex: 1 1 auto;
+    min-width: 280px;
+}
+
+.pane-preview {
+    flex: 0 0 320px;
+    min-width: 220px;
+}
+
+.split-handle {
+    flex: 0 0 10px;
+    margin: 0 4px;
+    cursor: col-resize;
+    position: relative;
+}
+
+.split-handle::after {
+    content: "";
+    position: absolute;
+    top: 8px;
+    bottom: 8px;
+    left: 4px;
+    width: 2px;
+    border-radius: 2px;
+    background: var(--border);
+    transition: background 0.12s ease;
+}
+
+.split-handle:hover::after {
+    background: var(--accent);
+}
+
+.pane-list-toolbar {
+    display: flex;
+    gap: 8px;
+}
+
+.playlist-table-wrap {
+    margin-bottom: 0;
+    flex: 1;
+    overflow-y: auto;
+}
+
+.item-grid-wrap {
+    flex: 1;
+    overflow-y: auto;
+}
+
+.playlist-table tbody tr {
+    cursor: pointer;
+}
+
+.playlist-table tbody tr:hover {
+    background: var(--bg-inset);
+}
+
+.playlist-table tbody tr.selected {
+    background: var(--accent-soft);
+}
+
+.playlist-table th.sortable {
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+}
+
+.playlist-table th.sortable:hover {
+    color: var(--text);
+}
+
+.playlist-name-cell,
+.frames-cell {
+    max-width: 1px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.items-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.pane-preview-title {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.preview-body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.preview-image {
+    width: 100%;
+    border-radius: var(--radius-md);
+    object-fit: contain;
+    background: var(--bg-inset);
+    max-height: 50vh;
+}
+
+.preview-name {
+    font-weight: 600;
+    margin: 0;
+}
+
+.preview-meta {
+    margin: 0;
+    font-size: 0.82rem;
+}
+
+.preview-crop-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.item-tile.previewing {
+    border-color: var(--accent-strong);
+}
+
+/* ---------- Dropdown ---------- */
+
+.dropdown {
+    position: relative;
+}
+
+.dropdown-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-md);
+    min-width: 180px;
+    padding: 6px;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.dropdown-item {
+    background: none;
+    border: none;
+    text-align: left;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    font-size: 0.86rem;
+    color: var(--text);
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.dropdown-item:hover {
+    background: var(--bg-inset);
+}
+
+.dropdown-item.disabled {
+    color: var(--text-muted);
+    cursor: default;
+}
+
+/* ---------- Modals ---------- */
+
+.modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(10, 8, 6, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    padding: 20px;
+}
+
+.modal-card {
+    background: var(--bg-elevated);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    width: 100%;
+    max-width: 420px;
+    box-shadow: var(--shadow-md);
+    max-height: 88vh;
+    overflow-y: auto;
+}
+
+.modal-card-lg {
+    max-width: 720px;
+    /* Overrides .modal-card's own overflow-y:auto: this card scrolls only its .picker-grid
+       child (flex: 1 there) instead of scrolling as one block, so the action buttons at the
+       bottom stay visible no matter how many uploads are in the list. */
+    max-height: 88vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.crop-dialog {
+    width: 90vw;
+    height: 90vh;
+    max-width: 90vw;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.crop-dialog-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.crop-dialog-header h3 {
+    margin: 0;
+}
+
+.crop-ratio-toggle {
+    display: flex;
+    gap: 6px;
+}
+
+.crop-stage {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    margin-top: 14px;
+    background: var(--bg-inset);
+    border-radius: var(--radius-md);
+    touch-action: none;
+}
+
+.crop-image {
+    display: block;
+    max-width: 100%;
+    max-height: 100%;
+    width: auto;
+    height: auto;
+    -webkit-user-drag: none;
+    user-select: none;
+    pointer-events: none;
+}
+
+.crop-frame {
+    position: absolute;
+    box-sizing: border-box;
+    border: 2px solid var(--accent);
+    /* The classic crop-tool trick: a huge spread with no blur, clipped by .crop-stage's own
+       overflow:hidden, dims everything outside the frame's box without an extra overlay element
+       that would need its own hole cut out of it. */
+    box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55);
+    cursor: grab;
+    touch-action: none;
+}
+
+.btn-icon {
+    padding: 7px;
+    line-height: 0;
+}
+
+.crop-error {
+    color: var(--danger-strong);
+    font-size: 0.85rem;
+    margin: 10px 0 0;
+}
+
+/* ---------- Scan lock (blocks navigation during a full account scan) ---------- */
+
+.scan-lock-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(10, 8, 6, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 200;
+    padding: 20px;
+}
+
+.scan-lock-card {
+    background: var(--bg-elevated);
+    border-radius: var(--radius-lg);
+    padding: 32px;
+    width: 100%;
+    max-width: 480px;
+    box-shadow: var(--shadow-md);
+    text-align: center;
+}
+
+.scan-lock-card .spinner {
+    margin: 0 auto 16px;
+}
+
+.scan-lock-card .log-panel {
+    margin-top: 18px;
+    text-align: left;
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 10px;
+    margin-top: 18px;
+}
+
+.modal-hint {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    margin-right: auto;
+}
+
+/* ---------- Activity log ---------- */
+
+.log-panel {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    margin-top: 8px;
+}
+
+.log-toggle {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: none;
+    border: none;
+    padding: 12px 16px;
+    font-family: inherit;
+    font-weight: 600;
+    font-size: 0.88rem;
+    color: var(--text);
+    cursor: pointer;
+}
+
+.log-count {
+    background: var(--bg-inset);
+    color: var(--text-muted);
+    border-radius: 999px;
+    padding: 1px 9px;
+    font-size: 0.74rem;
+}
+
+.chevron {
+    margin-left: auto;
+    color: var(--text-muted);
+}
+
+.log-body {
+    max-height: 240px;
+    overflow-y: auto;
+    padding: 4px 16px 12px;
+    border-top: 1px solid var(--border-soft);
+}
+
+.log-line {
+    display: flex;
+    gap: 10px;
+    padding: 4px 0;
+    font-size: 0.82rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color: var(--text-muted);
+}
+
+.log-time {
+    color: var(--text-muted);
+    opacity: 0.7;
+    flex: 0 0 auto;
+}
+
+.log-empty {
+    color: var(--text-muted);
+    padding: 8px 0;
+    font-size: 0.85rem;
+}
+
+/* ---------- Auth screen ---------- */
+
+.auth-shell {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background:
+        radial-gradient(circle at 20% 20%, var(--accent-soft), transparent 45%),
+        var(--bg);
+    padding: 20px;
+}
+
+.auth-card {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+    padding: 36px 34px;
+    width: 100%;
+    max-width: 380px;
+}
+
+.auth-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 6px;
+}
+
+.auth-brand .brand-mark {
+    font-size: 1.5rem;
+}
+
+.auth-brand h1 {
+    font-size: 1.3rem;
+    margin: 0;
+}
+
+.auth-subtitle {
+    color: var(--text-muted);
+    font-size: 0.88rem;
+    margin-bottom: 22px;
+}
+
+.auth-error {
+    color: var(--danger-strong);
+    background: var(--danger-soft);
+    border-radius: var(--radius-sm);
+    padding: 9px 12px;
+    font-size: 0.85rem;
+    margin-bottom: 14px;
+}
+
+/* ---------- Toast ---------- */
+
+.toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    max-width: 380px;
+    padding: 14px 16px;
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-md);
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    font-size: 0.88rem;
+    z-index: 300;
+    animation: toast-in 0.15s ease-out;
+}
+
+.toast-error {
+    background: var(--danger);
+    color: #fff;
+}
+
+.toast-info {
+    background: var(--bg-elevated);
+    color: var(--text);
+    border: 1px solid var(--border);
+}
+
+.toast-success {
+    background: var(--success);
+    color: #06210a;
+}
+
+.toast-close {
+    background: none;
+    border: none;
+    color: inherit;
+    font-size: 1.1rem;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0;
+    margin-left: auto;
+    opacity: 0.8;
+}
+
+.toast-close:hover {
+    opacity: 1;
+}
+
+@keyframes toast-in {
+    from { transform: translateY(8px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+/* ---------- Misc ---------- */
+
+.empty-state {
+    color: var(--text-muted);
+    padding: 32px 12px;
+    text-align: center;
+    font-size: 0.92rem;
+}
+
+.items-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 40px 12px;
+}
+
+.spinner {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    animation: spin 0.8s linear infinite;
+}
+
+.spinner-inline {
+    width: 16px;
+    height: 16px;
+    border-width: 2px;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ---------- Responsive ---------- */
+
+@media (max-width: 900px) {
+    .app-shell {
+        flex-direction: column;
+    }
+
+    .sidebar {
+        width: 100%;
+        height: auto;
+        position: static;
+        flex-direction: row;
+        align-items: center;
+        gap: 16px;
+        overflow-x: auto;
+    }
+
+    .brand { padding: 0; }
+    .nav-links { flex-direction: row; }
+    .sidebar-footer { margin-top: 0; margin-left: auto; border-top: none; flex-direction: row; align-items: center; }
+    .signed-in-email { display: none; }
+    .image-cache-progress { width: 90px; padding: 0; }
+    .image-cache-progress-label { display: none; }
+
+    .app-main {
+        padding: 20px;
+    }
+
+    .card-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .playlist-layout {
+        flex-direction: column;
+    }
+
+    .pane-list,
+    .pane-items,
+    .pane-preview {
+        flex: 1 1 auto !important;
+        width: 100% !important;
+    }
+
+    .split-handle {
+        display: none;
+    }
+}

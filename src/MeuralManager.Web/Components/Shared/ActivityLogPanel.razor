@@ -1,0 +1,42 @@
+@implements IDisposable
+
+<div class="log-panel">
+    <button class="log-toggle" type="button" @onclick="ToggleCollapsed">
+        <span>Activity Log</span>
+        <span class="log-count">@Log.Entries.Count</span>
+        <span class="chevron">@(_collapsed ? "▸" : "▾")</span>
+    </button>
+    @if (!_collapsed)
+    {
+        <div class="log-body">
+            @if (Log.Entries.Count == 0)
+            {
+                <p class="log-empty">Nothing yet.</p>
+            }
+            else
+            {
+                @foreach (var entry in Log.Entries.Reverse())
+                {
+                    <div class="log-line">
+                        <span class="log-time">@entry.When.ToString("HH:mm:ss")</span>
+                        <span>@entry.Message</span>
+                    </div>
+                }
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public ActivityLog Log { get; set; } = null!;
+
+    private bool _collapsed;
+
+    protected override void OnInitialized() => Log.Changed += HandleChanged;
+
+    private void HandleChanged() => InvokeAsync(StateHasChanged);
+
+    private void ToggleCollapsed() => _collapsed = !_collapsed;
+
+    public void Dispose() => Log.Changed -= HandleChanged;
+}

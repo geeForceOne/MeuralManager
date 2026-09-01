@@ -1,0 +1,82 @@
+@inject MeuralSessionState Session
+@inject IJSRuntime JS
+
+@if (_editing)
+{
+    <input class="item-tile-name-input" value="@_draft"
+           @ref="_inputRef"
+           @oninput="e => _draft = (string)e.Value!"
+           @onkeydown="HandleKeyDown"
+           @onblur="CommitAsync"
+           @onclick:stopPropagation="true" />
+}
+else
+{
+    <span class="item-tile-name" title="Click to rename"
+          @onclick="StartEdit">
+        @(Item.Name ?? "(untitled)")
+    </span>
+}
+
+@code {
+    [Parameter, EditorRequired] public MeuralItem Item { get; set; } = null!;
+    [Parameter] public EventCallback<MeuralItem> OnRenamed { get; set; }
+    [Parameter] public EventCallback<string> OnRenameFailed { get; set; }
+
+    private bool _editing;
+    private string _draft = "";
+    private bool _focusPending;
+    private ElementReference _inputRef;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_focusPending)
+            return;
+
+        _focusPending = false;
+        await JS.InvokeVoidAsync("meuralUtils.focusAndSelect", _inputRef);
+    }
+
+    private void StartEdit()
+    {
+        if (Item.Id is not long)
+            return;
+
+        _draft = Item.Name ?? "";
+        _editing = true;
+        _focusPending = true;
+    }
+
+    private void CancelEdit() => _editing = false;
+
+    private Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            return CommitAsync();
+        if (e.Key == "Escape")
+            CancelEdit();
+        return Task.CompletedTask;
+    }
+
+    private async Task CommitAsync()
+    {
+        if (!_editing || Item.Id is not long itemId)
+            return;
+
+        _editing = false;
+        var newName = _draft.Trim();
+        if (string.IsNullOrWhiteSpace(newName) || newName == Item.Name)
+            return;
+
+        try
+        {
+            var updated = await Session.Client!.RenameItemAsync(itemId, newName);
+            await Session.RenameItemAsync(itemId, updated.Name);
+            await OnRenamed.InvokeAsync(updated);
+        }
+        catch (Exception ex)
+        {
+            await OnRenameFailed.InvokeAsync(ex.Message);
+        }
+    }
+}

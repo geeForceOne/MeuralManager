@@ -1,0 +1,21 @@
+@using Microsoft.AspNetCore.Components.Web
+@using MeuralManager.Web.Services
+@inject StaticAssetVersion AssetVersion
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+    <title>Meural Manager</title>
+    <base href="/" />
+    <link rel="stylesheet" href="css/app.css?v=@AssetVersion.Get("css/app.css")" />
+    <link rel="icon" href="data:," />
+    <HeadOutlet @rendermode="new InteractiveServerRenderMode(prerender: false)" />
+</head>
+<body>
+    <Routes @rendermode="new InteractiveServerRenderMode(prerender: false)" />
+    <script src="_framework/blazor.web.js"></script>
+    <script src="js/splitter.js?v=@AssetVersion.Get("js/splitter.js")"></script>
+    <script src="js/cropper.js?v=@AssetVersion.Get("js/cropper.js")"></script>
+</body>
+</html>

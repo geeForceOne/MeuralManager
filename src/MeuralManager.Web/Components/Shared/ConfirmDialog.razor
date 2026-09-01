@@ -1,0 +1,43 @@
+@if (_visible)
+{
+    <div class="modal-backdrop" @onclick="() => Resolve(false)">
+        <div class="modal-card" @onclick:stopPropagation="true">
+            <h3>@_title</h3>
+            <p>@_message</p>
+            <div class="modal-actions">
+                <button class="btn btn-ghost" @onclick="() => Resolve(false)">Cancel</button>
+                <button class="btn btn-danger" @onclick="() => Resolve(true)">@_confirmLabel</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _visible;
+    private string _title = "";
+    private string _message = "";
+    private string _confirmLabel = "Delete";
+    private TaskCompletionSource<bool>? _tcs;
+
+    // Shows the modal and completes once the user picks an option - callers `await` this
+    // directly instead of wiring up a callback, e.g. `if (await _confirm.AskAsync(...))`.
+    public Task<bool> AskAsync(string title, string message, string confirmLabel = "Delete")
+    {
+        _title = title;
+        _message = message;
+        _confirmLabel = confirmLabel;
+        _visible = true;
+        _tcs = new TaskCompletionSource<bool>();
+        StateHasChanged();
+        return _tcs.Task;
+    }
+
+    private void Resolve(bool result)
+    {
+        _visible = false;
+        var tcs = _tcs;
+        _tcs = null;
+        StateHasChanged();
+        tcs?.TrySetResult(result);
+    }
+}

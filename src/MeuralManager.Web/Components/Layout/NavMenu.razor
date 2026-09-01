@@ -1,0 +1,92 @@
+@using Microsoft.AspNetCore.Components.Routing
+@implements IDisposable
+@inject ImageCacheManager ImageCache
+
+<aside class="sidebar">
+    <div class="brand">
+        <span class="brand-mark">◈</span>
+        <span class="brand-name">Meural Manager</span>
+    </div>
+
+    <nav class="nav-links">
+        <NavLink href="/" Match="NavLinkMatch.All" class="nav-link">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 11.5 12 4l9 7.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M5.5 10v9a1 1 0 0 0 1 1H10v-6h4v6h3.5a1 1 0 0 0 1-1v-9" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span>Dashboard</span>
+        </NavLink>
+        <NavLink href="/playlists" class="nav-link">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6.5a1.5 1.5 0 0 1 1.5-1.5h4l1.5 2h7.5A1.5 1.5 0 0 1 20 8.5v9A1.5 1.5 0 0 1 18.5 19h-13A1.5 1.5 0 0 1 4 17.5Z" stroke-linejoin="round"/></svg>
+            <span>Playlists</span>
+        </NavLink>
+        <NavLink href="/all-pictures" class="nav-link">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3.5" y="3.5" width="8" height="8" rx="1.5"/><rect x="12.5" y="3.5" width="8" height="8" rx="1.5"/><rect x="3.5" y="12.5" width="8" height="8" rx="1.5"/><rect x="12.5" y="12.5" width="8" height="8" rx="1.5"/></svg>
+            <span>All Pictures</span>
+        </NavLink>
+        <NavLink href="/orphan-uploads" class="nav-link">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="m4 16 4.5-4.5a1.5 1.5 0 0 1 2.1 0L15 16" stroke-linecap="round" stroke-linejoin="round"/><path d="m13 14 1.9-1.9a1.5 1.5 0 0 1 2.1 0L20 15" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span>Orphan Uploads</span>
+        </NavLink>
+        <NavLink href="/unused-galleries" class="nav-link">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M9 20h6M12 16v4" stroke-linecap="round"/></svg>
+            <span>Unused Playlists</span>
+        </NavLink>
+        <NavLink href="/settings" class="nav-link">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 3v2.2M12 18.8V21M4.9 4.9l1.6 1.6M17.5 17.5l1.6 1.6M3 12h2.2M18.8 12H21M4.9 19.1l1.6-1.6M17.5 6.5l1.6-1.6" stroke-linecap="round"/></svg>
+            <span>Settings</span>
+        </NavLink>
+        <NavLink href="/release-notes" class="nav-link">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4.5" y="3.5" width="15" height="17" rx="1.5"/><path d="M8 8h8M8 12h8M8 16h5" stroke-linecap="round"/></svg>
+            <span>Release Notes</span>
+        </NavLink>
+    </nav>
+
+    <div class="sidebar-footer">
+        @if (_progress is { IsRunning: true } p)
+        {
+            <div class="image-cache-progress" title="Downloading your pictures for faster local access">
+                <span class="image-cache-progress-label">Caching images… @p.Cached/@p.Total</span>
+                <div class="image-cache-progress-bar">
+                    <div class="image-cache-progress-fill" style="width:@(Percent(p))%"></div>
+                </div>
+            </div>
+        }
+        <div class="signed-in-as" title="@Email">
+            <span class="avatar">@Initial</span>
+            <span class="signed-in-email">@Email</span>
+        </div>
+        <button class="btn btn-ghost btn-sm btn-block" @onclick="OnSignOut">Sign out</button>
+    </div>
+</aside>
+
+@code {
+    [Parameter] public string? Email { get; set; }
+    [Parameter] public EventCallback OnSignOut { get; set; }
+
+    private string Initial => string.IsNullOrEmpty(Email) ? "?" : Email[..1].ToUpperInvariant();
+    private ImageCacheProgress? _progress;
+
+    protected override void OnInitialized()
+    {
+        ImageCache.Changed += HandleImageCacheChanged;
+        RefreshProgress();
+    }
+
+    protected override void OnParametersSet() => RefreshProgress();
+
+    private void HandleImageCacheChanged(string email)
+    {
+        if (email != Email)
+            return;
+
+        InvokeAsync(() =>
+        {
+            RefreshProgress();
+            StateHasChanged();
+        });
+    }
+
+    private void RefreshProgress() => _progress = string.IsNullOrEmpty(Email) ? null : ImageCache.GetProgress(Email);
+
+    private static int Percent(ImageCacheProgress p) => p.Total == 0 ? 0 : (int)(100.0 * p.Cached / p.Total);
+
+    public void Dispose() => ImageCache.Changed -= HandleImageCacheChanged;
+}

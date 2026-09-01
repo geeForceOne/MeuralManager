@@ -1,0 +1,69 @@
+@implements IDisposable
+
+@if (_visible)
+{
+    <div class="toast toast-@_kind">
+        <span>@_message</span>
+        <button type="button" class="toast-close" @onclick="Dismiss" aria-label="Dismiss">×</button>
+    </div>
+}
+
+@code {
+    private bool _visible;
+    private string _message = "";
+    private string _kind = "error";
+    private CancellationTokenSource? _hideCts;
+
+    // Small transient banner for failures that don't warrant a persistent log - pages that
+    // dropped their activity log (e.g. Playlists) still need *some* way to surface "that didn't
+    // work", or a genuine API failure looks identical to nothing having happened at all.
+    public void ShowError(string message) => Show(message, "error");
+
+    // Fixed-position and always visible regardless of scroll position or which pane is in view -
+    // used so a completed action (e.g. installing a playlist on a frame) is unmissable even when
+    // the thing it changed is off-screen.
+    public void ShowSuccess(string message) => Show(message, "success");
+
+    public void ShowInfo(string message) => Show(message, "info");
+
+    private void Show(string message, string kind)
+    {
+        _hideCts?.Cancel();
+        _hideCts?.Dispose();
+
+        _message = message;
+        _kind = kind;
+        _visible = true;
+        StateHasChanged();
+
+        var cts = _hideCts = new CancellationTokenSource();
+        _ = AutoHideAsync(cts.Token);
+    }
+
+    private async Task AutoHideAsync(CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(6), ct);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        _visible = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void Dismiss()
+    {
+        _hideCts?.Cancel();
+        _visible = false;
+    }
+
+    public void Dispose()
+    {
+        _hideCts?.Cancel();
+        _hideCts?.Dispose();
+    }
+}

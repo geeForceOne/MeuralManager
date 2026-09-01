@@ -1,0 +1,63 @@
+@page "/release-notes"
+
+<div class="page-header">
+    <h1>Release Notes</h1>
+</div>
+
+<div class="info-panel">
+    @foreach (var release in Releases)
+    {
+        <h3>@release.Version <span class="muted">— @release.Date</span></h3>
+        <ul>
+            @foreach (var change in release.Changes)
+            {
+                <li>@change</li>
+            }
+        </ul>
+    }
+</div>
+
+@code {
+    private sealed record Release(string Version, string Date, string[] Changes);
+
+    private static readonly Release[] Releases =
+    [
+        new("1.5.0", "2026-09-02",
+        [
+            "Playlists: crop images to 16:9 or 9:16, non-destructively - a Revert to original button restores the pre-crop image at any time",
+            "Playlists: the three-pane layout now remembers its pane sizes across visits",
+        ]),
+        new("1.4.0", "2026-09-01",
+        [
+            "Images now download once and are cached locally, so thumbnails and previews load instantly on repeat views instead of re-fetching from Meural every time - a progress indicator in the sidebar shows the initial background caching as it happens",
+            "All Pictures, Orphan Uploads, and Playlists now render large lists much faster",
+            "Removed the Activity Log from All Pictures to give the list more room",
+            "Playlists: select all images in a playlist with one click, then download the selected images as a ZIP",
+            "Playlists and All Pictures: get an AI-suggested name for an image with one click (Claude or ChatGPT - add API keys, pick models, and choose a Professional or Creative rename style in Settings)",
+            "Playlists: Select NoName picks out images with a generic name (like \"IMG_1234\" or a Facebook/Unsplash-style export name) in one click, and AI rename applies AI-suggested names to the whole selection at once",
+            "Fixed switching playlists quickly sometimes leaving the previous playlist's (stale) items on screen",
+        ]),
+        new("1.3.1", "2026-08-31",
+        [
+            "Fixed thumbnails and previews (including \"Picture of the Moment\") occasionally showing a broken image because their cached CDN link had expired - a fresh link is now fetched automatically",
+        ]),
+        new("1.3.0", "2026-08-30",
+        [
+            "Added an All Pictures page: browse, search, sort, rename, and delete every uploaded image, see which playlist(s) it's in, and preview the selected image",
+        ]),
+        new("1.2.0", "2026-08-29",
+        [
+            "Added click-to-rename for playlist images, right from their thumbnail",
+            "Fixed CSS/JS changes requiring a hard-refresh to show up after a redeploy",
+        ]),
+        new("1.1.0", "2026-08-28",
+        [
+            "Fixed missing blazor.web.js in published Docker images",
+            "Fixed the scan cache not persisting across container restarts",
+        ]),
+        new("1.0.0", "2026-08-28",
+        [
+            "Initial release",
+        ]),
+    ];
+}

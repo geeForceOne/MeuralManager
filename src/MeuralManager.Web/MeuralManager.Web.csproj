@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>MeuralManager.Web</RootNamespace>
+    <Version>1.5.0</Version>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <UserSecretsId>meuralmanager-web</UserSecretsId>
+    <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
+    <!-- Forces the SDK to always fetch Blazor's framework JS (blazor.web.js) as a NuGet pack
+         instead of relying on the local shared framework install on disk. Needed for
+         cross-architecture builds (e.g. building on amd64 for an arm64 target, such as a
+         Raspberry Pi) - without it, the on-disk framework is the builder's arch, so the JS is
+         silently missing from the target image. See dotnet/aspnetcore#63962. -->
+    <RequiresAspNetWebAssets>true</RequiresAspNetWebAssets>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MeuralManager.Core\MeuralManager.Core.csproj" />
+  </ItemGroup>
+
+</Project>
