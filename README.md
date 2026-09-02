@@ -55,8 +55,29 @@ docker run -d --name meuralmanager -p 8080:8080 \
 - `/data/cache` — the per-account scan cache (uploads/playlists/frames), one SQLite file per
   signed-in email. Without this volume, every restart needs a fresh full scan.
 
-Or with `docker-compose.yml` from this repo (`docker compose up -d`), which sets up both volumes
-already.
+## Run it with Docker Compose
+
+The repo's `docker-compose.yml` pulls the published image and sets up both volumes above already:
+
+```
+git clone https://github.com/geeForceOne/MeuralManager.git
+cd MeuralManager
+docker compose up -d
+```
+
+Then open `http://localhost:8080`. To update to the latest image later:
+
+```
+docker compose pull
+docker compose up -d
+```
+
+To stop it (add `-v` to also delete the volumes, which signs everyone out and clears the scan
+cache):
+
+```
+docker compose down
+```
 
 ## Build from source instead
 
