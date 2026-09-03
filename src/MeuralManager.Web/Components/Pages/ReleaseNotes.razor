@@ -22,6 +22,11 @@
 
     private static readonly Release[] Releases =
     [
+        new("1.6.0", "2026-09-03",
+        [
+            "Playlists: uploading more than one image now offers \"Upload all as-is\" to skip the crop prompt for the rest of the batch in one click",
+            "Playlists: uploads that fail (e.g. a Meural timeout) now show which file failed and why, with a Retry button per file and a Retry all",
+        ]),
         new("1.5.0", "2026-09-02",
         [
             "Playlists: crop images to 16:9 or 9:16, non-destructively - a Revert to original button restores the pre-crop image at any time",

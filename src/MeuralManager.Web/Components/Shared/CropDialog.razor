@@ -37,6 +37,12 @@
                 @if (_allowSkip)
                 {
                     <button type="button" class="btn btn-ghost" @onclick="Skip" disabled="@_busy">Upload as-is</button>
+                    @if (_remainingCount > 1)
+                    {
+                        <button type="button" class="btn btn-ghost" @onclick="SkipAll" disabled="@_busy">
+                            Upload all @_remainingCount as-is
+                        </button>
+                    }
                 }
                 <button type="button" class="btn btn-ghost" @onclick="Cancel" disabled="@_busy">Cancel</button>
                 <button type="button" class="btn btn-primary" @onclick="Apply" disabled="@_busy">
@@ -49,13 +55,14 @@
 
 @code {
     public enum CropAspect { Wide, Tall }
-    public enum CropOutcome { Applied, Skipped, Cancelled }
+    public enum CropOutcome { Applied, Skipped, SkippedAll, Cancelled }
     public readonly record struct CropResult(CropOutcome Outcome, string? CroppedPath);
 
     private bool _visible;
     private bool _needsInit;
     private bool _busy;
     private bool _allowSkip;
+    private int _remainingCount;
     private string? _error;
     private string _imageUrl = "";
     private CropAspect _aspect;
@@ -67,12 +74,16 @@
     // Opens the dialog on the given image and waits for the user to apply (resolves with a path
     // to a cropped JPEG written to a temp file - the caller owns deleting it once it's done with
     // it, same as UploadNewAsync's own temp-dir lifecycle), skip (only offered when allowSkip is
-    // true - used by the upload flow to allow uploading a file unmodified), or cancel.
-    public Task<CropResult> CropAsync(string imageUrl, CropAspect initialAspect, bool allowSkip = false)
+    // true - used by the upload flow to allow uploading a file unmodified), skip the rest of the
+    // batch too (only offered when allowSkip is true and remainingCount, this file included, is
+    // more than one - a shortcut for "upload as-is" without a crop-or-skip prompt per file), or
+    // cancel.
+    public Task<CropResult> CropAsync(string imageUrl, CropAspect initialAspect, bool allowSkip = false, int remainingCount = 1)
     {
         _imageUrl = imageUrl;
         _aspect = initialAspect;
         _allowSkip = allowSkip;
+        _remainingCount = remainingCount;
         _error = null;
         _busy = false;
         _visible = true;
@@ -149,6 +160,12 @@
     {
         await DisposeJsStateAsync();
         Resolve(new CropResult(CropOutcome.Skipped, null));
+    }
+
+    private async Task SkipAll()
+    {
+        await DisposeJsStateAsync();
+        Resolve(new CropResult(CropOutcome.SkippedAll, null));
     }
 
     private async Task Cancel()

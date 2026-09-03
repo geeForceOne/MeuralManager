@@ -3,7 +3,12 @@ using MeuralManager.Core.Models;
 
 namespace MeuralManager.Core.Services;
 
-public readonly record struct UploadSummary(int Done, int Failed, IReadOnlyList<(string FilePath, MeuralItem Item)> Uploaded);
+public readonly record struct UploadFailure(string FilePath, string Error);
+
+public readonly record struct UploadSummary(
+    int Done, int Failed,
+    IReadOnlyList<(string FilePath, MeuralItem Item)> Uploaded,
+    IReadOnlyList<UploadFailure> Failures);
 
 // Bulk playlist-membership operations, following the same loop + per-item
 // try/catch + IProgress<string> + CancellationToken + politeness-delay shape
@@ -126,6 +131,10 @@ public static class PlaylistService
         // whatever they associated with that path (e.g. Playlists.razor's crop-before-upload
         // flow, which needs to know which resulting item id to store a pre-crop original under).
         var uploaded = new List<(string FilePath, MeuralItem Item)>();
+        // Also keyed by file path (not just a message) so a caller can offer a "Retry" that
+        // re-runs the upload for exactly the files that failed - e.g. a Meural timeout on one
+        // file out of a larger batch shouldn't force re-picking and re-cropping everything.
+        var failures = new List<UploadFailure>();
         foreach (var filePath in filePaths)
         {
             ct.ThrowIfCancellationRequested();
@@ -144,6 +153,7 @@ public static class PlaylistService
                 else
                 {
                     failed++;
+                    failures.Add(new UploadFailure(filePath, $"Uploaded but couldn't add it to the playlist (server said: {outcome.StatusCode})."));
                 }
                 progress?.Report(outcome.Success
                     ? $"({done + failed}/{filePaths.Count}) Uploaded and added \"{fileName}\"."
@@ -157,12 +167,14 @@ public static class PlaylistService
             catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
             {
                 failed++;
-                progress?.Report($"({done + failed}/{filePaths.Count}) Couldn't upload \"{fileName}\": {ex.Message}");
+                var message = ex is OperationCanceledException ? "Timed out waiting for Meural." : ex.Message;
+                failures.Add(new UploadFailure(filePath, message));
+                progress?.Report($"({done + failed}/{filePaths.Count}) Couldn't upload \"{fileName}\": {message}");
             }
 
             await Task.Delay(CallDelay, ct);
         }
 
-        return new UploadSummary(done, failed, uploaded);
+        return new UploadSummary(done, failed, uploaded, failures);
     }
 }
