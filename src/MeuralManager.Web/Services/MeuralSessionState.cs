@@ -61,6 +61,7 @@ public sealed class MeuralSessionState(IHostEnvironment env, ImageCacheManager i
     public List<MeuralGallery>? AllGalleriesCache { get; private set; }
     public List<MeuralDevice>? AllDevicesCache { get; private set; }
     public Dictionary<long, List<MeuralGallery>>? DeviceGalleriesCache { get; private set; }
+    public HashSet<long> FavoriteGalleryIds { get; private set; } = [];
 
     public async Task SetAuthenticatedAsync(MeuralApiClient client, string email)
     {
@@ -90,6 +91,7 @@ public sealed class MeuralSessionState(IHostEnvironment env, ImageCacheManager i
         AllGalleriesCache = null;
         AllDevicesCache = null;
         DeviceGalleriesCache = null;
+        FavoriteGalleryIds = [];
         LastScannedUtc = null;
     }
 
@@ -129,6 +131,7 @@ public sealed class MeuralSessionState(IHostEnvironment env, ImageCacheManager i
             AllItemsCache = await _cacheStore.GetAllItemsAsync(CancellationToken.None);
             AllDevicesCache = await _cacheStore.GetDevicesAsync(CancellationToken.None);
             DeviceGalleriesCache = await _cacheStore.GetDeviceGalleriesAsync(CancellationToken.None);
+            FavoriteGalleryIds = await _cacheStore.GetFavoriteGalleryIdsAsync(CancellationToken.None);
             LastScannedUtc = lastRefreshed;
         }
         catch (Exception ex)
@@ -317,9 +320,21 @@ public sealed class MeuralSessionState(IHostEnvironment env, ImageCacheManager i
     public async Task RemoveGalleryAsync(long galleryId)
     {
         AllGalleriesCache?.RemoveAll(g => g.Id == galleryId);
+        FavoriteGalleryIds.Remove(galleryId);
 
         if (_cacheStore is not null)
             await _cacheStore.RemoveGalleryAsync(galleryId, CancellationToken.None);
+    }
+
+    public async Task SetGalleryFavoriteAsync(long galleryId, bool favorite)
+    {
+        if (favorite)
+            FavoriteGalleryIds.Add(galleryId);
+        else
+            FavoriteGalleryIds.Remove(galleryId);
+
+        if (_cacheStore is not null)
+            await _cacheStore.SetGalleryFavoriteAsync(galleryId, favorite, CancellationToken.None);
     }
 
     public async Task RemoveItemsAsync(IEnumerable<long> itemIds)
