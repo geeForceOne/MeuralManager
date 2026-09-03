@@ -58,6 +58,33 @@ public sealed class PlaylistCacheStore
         await cmd.ExecuteNonQueryAsync(ct);
     }
 
+    // Favorited playlist ids - kept in their own table, untouched by FullRefreshAsync, so
+    // marking a playlist a favorite survives a rescan even though rescanning wipes and
+    // re-inserts every row in Galleries.
+    public async Task<HashSet<long>> GetFavoriteGalleryIdsAsync(CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT GalleryId FROM Favorites";
+
+        var result = new HashSet<long>();
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+            result.Add(reader.GetInt64(0));
+        return result;
+    }
+
+    public async Task SetGalleryFavoriteAsync(long galleryId, bool favorite, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = favorite
+            ? "INSERT OR IGNORE INTO Favorites (GalleryId) VALUES (@id)"
+            : "DELETE FROM Favorites WHERE GalleryId = @id";
+        cmd.Parameters.AddWithValue("@id", galleryId);
+        await cmd.ExecuteNonQueryAsync(ct);
+    }
+
     public async Task<DateTime?> GetLastRefreshedUtcAsync(CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);
@@ -409,6 +436,7 @@ public sealed class PlaylistCacheStore
         await using var tx = conn.BeginTransaction();
         await ExecAsync(conn, tx, "DELETE FROM GalleryItems WHERE GalleryId = @id", ct, ("@id", galleryId));
         await ExecAsync(conn, tx, "DELETE FROM Galleries WHERE Id = @id", ct, ("@id", galleryId));
+        await ExecAsync(conn, tx, "DELETE FROM Favorites WHERE GalleryId = @id", ct, ("@id", galleryId));
         tx.Commit();
     }
 
@@ -573,6 +601,9 @@ public sealed class PlaylistCacheStore
             CREATE TABLE IF NOT EXISTS Settings (
                 Key TEXT PRIMARY KEY,
                 Value TEXT
+            );
+            CREATE TABLE IF NOT EXISTS Favorites (
+                GalleryId INTEGER PRIMARY KEY
             );
             """;
         await cmd.ExecuteNonQueryAsync(ct);

@@ -21,6 +21,29 @@
 </div>
 
 <div class="settings-group">
+    <h2>Cropping</h2>
+    <div class="setting-row">
+        <div>
+            <div class="setting-label">Crop tool</div>
+            <div class="muted setting-description">
+                Crop images to 16:9/9:16 on upload or from an existing playlist image's preview.
+            </div>
+        </div>
+        <label class="switch">
+            <input type="checkbox" checked="@_cropFeatureEnabled" @onchange="OnCropToggleChanged" />
+            <span class="switch-slider"></span>
+        </label>
+    </div>
+    <p class="muted setting-description">
+        Cropping is non-destructive - a "Revert to original" option lets you undo it later - but
+        that only works because this app keeps a copy of the pre-crop image in its own local
+        cache. <strong>If that cache (or its underlying database/volume) is lost or corrupted,
+        those saved originals - and the ability to revert - are gone for good</strong>, even
+        though the already-cropped image itself stays fine on Meural.
+    </p>
+</div>
+
+<div class="settings-group">
     <h2>AI Naming</h2>
     <p class="muted setting-description">
         On the Playlists page, get an AI-suggested name for an image (handy for uploads with a generic
@@ -85,6 +108,7 @@
 
 @code {
     private bool _showPictureOfTheMoment = true;
+    private bool _cropFeatureEnabled = true;
 
     private AiProvider _provider = AiProvider.Claude;
     private RenameStyle _renameStyle = RenameStyle.Professional;
@@ -103,6 +127,7 @@
 
         var prefs = await Preferences.LoadAsync();
         _showPictureOfTheMoment = prefs.ShowPictureOfTheMoment;
+        _cropFeatureEnabled = prefs.CropFeatureEnabled;
 
         var aiSettings = await Session.LoadAiSettingsAsync();
         _provider = aiSettings.Provider;
@@ -123,6 +148,15 @@
         // other preferences saved elsewhere, like the Playlists page's remembered splitter widths.
         var prefs = await Preferences.LoadAsync();
         await Preferences.SaveAsync(prefs with { ShowPictureOfTheMoment = _showPictureOfTheMoment });
+    }
+
+    private async Task OnCropToggleChanged(ChangeEventArgs e)
+    {
+        _cropFeatureEnabled = (bool)e.Value!;
+        // Loads-then-patches so this doesn't clobber other preferences saved elsewhere - see
+        // OnToggleChanged above.
+        var prefs = await Preferences.LoadAsync();
+        await Preferences.SaveAsync(prefs with { CropFeatureEnabled = _cropFeatureEnabled });
     }
 
     private async Task SaveAiSettingsAsync()

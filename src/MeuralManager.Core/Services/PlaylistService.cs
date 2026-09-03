@@ -3,7 +3,12 @@ using MeuralManager.Core.Models;
 
 namespace MeuralManager.Core.Services;
 
-public readonly record struct UploadSummary(int Done, int Failed, IReadOnlyList<(string FilePath, MeuralItem Item)> Uploaded);
+public readonly record struct UploadFailure(string FilePath, string Error);
+
+public readonly record struct UploadSummary(
+    int Done, int Failed,
+    IReadOnlyList<(string FilePath, MeuralItem Item)> Uploaded,
+    IReadOnlyList<UploadFailure> Failures);
 
 // Bulk playlist-membership operations, following the same loop + per-item
 // try/catch + IProgress<string> + CancellationToken + politeness-delay shape
@@ -119,20 +124,29 @@ public static class PlaylistService
     }
 
     public static async Task<UploadSummary> UploadAndAddToGalleryAsync(
-        MeuralApiClient client, long galleryId, IReadOnlyList<string> filePaths, IProgress<string>? progress, CancellationToken ct)
+        MeuralApiClient client, long galleryId, IReadOnlyList<string> filePaths, IProgress<string>? progress, CancellationToken ct,
+        IReadOnlySet<long>? knownItemIds = null)
     {
         int done = 0, failed = 0;
         // Keyed by input file path so callers can correlate a successful upload back to
         // whatever they associated with that path (e.g. Playlists.razor's crop-before-upload
         // flow, which needs to know which resulting item id to store a pre-crop original under).
         var uploaded = new List<(string FilePath, MeuralItem Item)>();
+        // Also keyed by file path (not just a message) so a caller can offer a "Retry" that
+        // re-runs the upload for exactly the files that failed - e.g. a Meural timeout on one
+        // file out of a larger batch shouldn't force re-picking and re-cropping everything.
+        var failures = new List<UploadFailure>();
+        // Fetched at most once per batch, and only if a timeout actually needs cross-checking -
+        // paying for a full account listing on every upload just to cover the rare timeout case
+        // isn't worth it, but re-fetching it per failed file would be needlessly slow too.
+        List<MeuralItem>? accountItemsForRecovery = null;
         foreach (var filePath in filePaths)
         {
             ct.ThrowIfCancellationRequested();
             var fileName = Path.GetFileName(filePath);
+            var name = Path.GetFileNameWithoutExtension(filePath);
             try
             {
-                var name = Path.GetFileNameWithoutExtension(filePath);
                 var item = await client.UploadItemAsync(filePath, name, progress, ct);
 
                 var outcome = await client.AddItemToGalleryAsync(galleryId, item.Id!.Value, ct);
@@ -144,6 +158,7 @@ public static class PlaylistService
                 else
                 {
                     failed++;
+                    failures.Add(new UploadFailure(filePath, $"Uploaded but couldn't add it to the playlist (server said: {outcome.StatusCode})."));
                 }
                 progress?.Report(outcome.Success
                     ? $"({done + failed}/{filePaths.Count}) Uploaded and added \"{fileName}\"."
@@ -156,13 +171,57 @@ public static class PlaylistService
             // not abort every remaining item in the batch.
             catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
             {
-                failed++;
-                progress?.Report($"({done + failed}/{filePaths.Count}) Couldn't upload \"{fileName}\": {ex.Message}");
+                // A timed-out upload request can still have gone through server-side - Meural
+                // received and processed the file, but our HttpClient gave up waiting for the
+                // reply before it arrived. Reporting that as a plain failure would be wrong (the
+                // image is fine) and would leave a real upload sitting outside every playlist as
+                // an invisible "orphan". So on a timeout, re-check the account for a
+                // just-created item with this exact file's name that wasn't there when the
+                // caller started (knownItemIds) before giving up on it.
+                MeuralItem? recovered = null;
+                if (ex is OperationCanceledException && knownItemIds is not null)
+                {
+                    try
+                    {
+                        accountItemsForRecovery ??= await client.GetAllItemsAsync(ct: ct);
+                        recovered = accountItemsForRecovery.FirstOrDefault(i =>
+                            i.Id is long id && !knownItemIds.Contains(id) && !uploaded.Exists(u => u.Item.Id == id)
+                            && string.Equals(i.Name, name, StringComparison.Ordinal));
+                    }
+                    catch
+                    {
+                        // Best-effort - if the cross-check itself fails, fall through and report
+                        // the original timeout as a failure like normal.
+                    }
+                }
+
+                if (recovered is { Id: long recoveredId })
+                {
+                    var addOutcome = await client.AddItemToGalleryAsync(galleryId, recoveredId, ct);
+                    if (addOutcome.Success)
+                    {
+                        done++;
+                        uploaded.Add((filePath, recovered));
+                        progress?.Report($"({done + failed}/{filePaths.Count}) \"{fileName}\" timed out, but Meural had already received it - added it to the playlist.");
+                    }
+                    else
+                    {
+                        failed++;
+                        failures.Add(new UploadFailure(filePath, $"Timed out, then uploaded but couldn't add it to the playlist (server said: {addOutcome.StatusCode})."));
+                    }
+                }
+                else
+                {
+                    failed++;
+                    var message = ex is OperationCanceledException ? "Timed out waiting for Meural." : ex.Message;
+                    failures.Add(new UploadFailure(filePath, message));
+                    progress?.Report($"({done + failed}/{filePaths.Count}) Couldn't upload \"{fileName}\": {message}");
+                }
             }
 
             await Task.Delay(CallDelay, ct);
         }
 
-        return new UploadSummary(done, failed, uploaded);
+        return new UploadSummary(done, failed, uploaded, failures);
     }
 }

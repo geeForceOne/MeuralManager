@@ -15,7 +15,8 @@ public sealed class UserPreferencesStore(ProtectedLocalStorage storage)
     public sealed record StoredPreferences(
         bool ShowPictureOfTheMoment = true,
         double? PlaylistListPaneWidth = null,
-        double? PreviewPaneWidth = null);
+        double? PreviewPaneWidth = null,
+        bool CropFeatureEnabled = true);
 
     public async Task<StoredPreferences> LoadAsync()
     {

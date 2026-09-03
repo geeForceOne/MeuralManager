@@ -22,6 +22,14 @@
 
     private static readonly Release[] Releases =
     [
+        new("1.6.0", "2026-09-03",
+        [
+            "Playlists: uploading more than one image now offers \"Upload all as-is\" to skip the crop prompt for the rest of the batch in one click",
+            "Playlists: uploads that fail (e.g. a Meural timeout) now show which file failed and why, with a Retry button per file and a Retry all",
+            "Playlists: an upload that times out is now double-checked against the account before being reported as failed - if Meural actually received it, it's added to the playlist with no error shown",
+            "Playlists: mark playlists as favorites - they always sort to the top of the list, with whatever sort you've picked still applying within the favorites and the rest",
+            "Dashboard: \"Last scanned\" now shows the date as well as the time",
+        ]),
         new("1.5.0", "2026-09-02",
         [
             "Playlists: crop images to 16:9 or 9:16, non-destructively - a Revert to original button restores the pre-crop image at any time",

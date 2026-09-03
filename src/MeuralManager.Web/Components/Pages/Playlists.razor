@@ -77,6 +77,7 @@ else
                 <table class="data-table playlist-table">
                     <thead>
                         <tr>
+                            <th class="fav-col"></th>
                             <th class="sortable" @onclick="() => SortBy(SortColumn.Name)">Name@(SortIndicator(SortColumn.Name))</th>
                             <th class="sortable id-col" @onclick="() => SortBy(SortColumn.Items)">Items@(SortIndicator(SortColumn.Items))</th>
                             <th>Frames</th>
@@ -85,14 +86,23 @@ else
                     <tbody>
                         @if (playlists.Count == 0)
                         {
-                            <tr><td colspan="3" class="empty-state">No playlists.</td></tr>
+                            <tr><td colspan="4" class="empty-state">No playlists.</td></tr>
                         }
                         @foreach (var gallery in playlists)
                         {
                             var frames = gallery.Id is long gid && frameNames.TryGetValue(gid, out var names) && names.Count > 0
                                 ? string.Join(", ", names)
                                 : "—";
+                            var isFavorite = IsFavorite(gallery);
                             <tr class="@(gallery.Id == _selectedPlaylist?.Id ? "selected" : "")" @onclick="() => SelectAsync(gallery)">
+                                <td class="fav-col" @onclick:stopPropagation="true">
+                                    <button type="button" class="fav-toggle @(isFavorite ? "is-favorite" : "")"
+                                            title="@(isFavorite ? "Remove from favorites" : "Mark as favorite")"
+                                            aria-label="@(isFavorite ? "Remove from favorites" : "Mark as favorite")"
+                                            @onclick="() => ToggleFavoriteAsync(gallery)">
+                                        ★
+                                    </button>
+                                </td>
                                 <td class="playlist-name-cell" title="@gallery.Name">@(gallery.Name ?? "(untitled)")</td>
                                 <td class="muted id-col">@(gallery.ItemIds?.Count ?? 0)</td>
                                 <td class="muted frames-cell" title="@frames">@frames</td>
@@ -144,6 +154,35 @@ else
                         <button type="button" class="btn btn-ghost btn-sm" @onclick="Cancel">Cancel</button>
                     }
                 </div>
+
+                @if (_failedUploads.Count > 0 && _failedUploadsGalleryId == _selectedPlaylist.Id)
+                {
+                    <div class="failed-uploads-panel">
+                        <div class="failed-uploads-header">
+                            <span>@_failedUploads.Count upload(s) failed</span>
+                            <div class="failed-uploads-actions">
+                                <button type="button" class="btn btn-secondary btn-sm" @onclick="RetryAllFailedUploadsAsync" disabled="@_busy">
+                                    Retry all
+                                </button>
+                                <button type="button" class="btn btn-ghost btn-sm" @onclick="DismissFailedUploads" disabled="@_busy">
+                                    Dismiss
+                                </button>
+                            </div>
+                        </div>
+                        <ul class="failed-uploads-list">
+                            @foreach (var failure in _failedUploads)
+                            {
+                                <li>
+                                    <span class="failed-upload-name">@failure.FileName</span>
+                                    <span class="muted failed-upload-error" title="@failure.Error">@failure.Error</span>
+                                    <button type="button" class="btn btn-ghost btn-sm" @onclick="() => RetryFailedUploadAsync(failure)" disabled="@_busy">
+                                        Retry
+                                    </button>
+                                </li>
+                            }
+                        </ul>
+                    </div>
+                }
 
                 @if (_loadingItems && _selectedItems.Count == 0)
                 {
@@ -246,20 +285,23 @@ else
                         <p class="muted preview-meta">Uploaded @_previewItem.CreatedAt</p>
                     }
                     <div class="preview-crop-actions">
-                        <button type="button" class="btn btn-secondary btn-sm btn-icon" disabled="@_busy"
-                                title="Crop to 16:9 (landscape)" aria-label="Crop to 16:9 landscape"
-                                @onclick="() => CropAndReplacePreviewAsync(CropDialog.CropAspect.Wide)">
-                            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <rect x="2" y="5" width="14" height="8" rx="1.2" stroke="currentColor" stroke-width="1.6" />
-                            </svg>
-                        </button>
-                        <button type="button" class="btn btn-secondary btn-sm btn-icon" disabled="@_busy"
-                                title="Crop to 9:16 (portrait)" aria-label="Crop to 9:16 portrait"
-                                @onclick="() => CropAndReplacePreviewAsync(CropDialog.CropAspect.Tall)">
-                            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <rect x="5" y="2" width="8" height="14" rx="1.2" stroke="currentColor" stroke-width="1.6" />
-                            </svg>
-                        </button>
+                        @if (_cropFeatureEnabled)
+                        {
+                            <button type="button" class="btn btn-secondary btn-sm btn-icon" disabled="@_busy"
+                                    title="Crop to 16:9 (landscape)" aria-label="Crop to 16:9 landscape"
+                                    @onclick="() => CropAndReplacePreviewAsync(CropDialog.CropAspect.Wide)">
+                                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <rect x="2" y="5" width="14" height="8" rx="1.2" stroke="currentColor" stroke-width="1.6" />
+                                </svg>
+                            </button>
+                            <button type="button" class="btn btn-secondary btn-sm btn-icon" disabled="@_busy"
+                                    title="Crop to 9:16 (portrait)" aria-label="Crop to 9:16 portrait"
+                                    @onclick="() => CropAndReplacePreviewAsync(CropDialog.CropAspect.Tall)">
+                                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <rect x="5" y="2" width="8" height="14" rx="1.2" stroke="currentColor" stroke-width="1.6" />
+                                </svg>
+                            </button>
+                        }
                         @if (_previewItem.Id is long previewId && Session.HasEditOriginal(previewId))
                         {
                             <button type="button" class="btn btn-ghost btn-sm" disabled="@_busy"
@@ -315,6 +357,12 @@ else
     private CropDialog _cropDialog = null!;
     private Toast _toast = null!;
     private DotNetObjectReference<Playlists>? _splitterRef;
+    private bool _cropFeatureEnabled = true;
+
+    private sealed record FailedUpload(string FileName, string FilePath, string Error);
+    private long? _failedUploadsGalleryId;
+    private string? _failedUploadsTempDir;
+    private List<FailedUpload> _failedUploads = [];
 
     private MeuralApiClient Client => Session.Client!;
     private List<MeuralGallery> AllPlaylists => Session.AllGalleriesCache ?? [];
@@ -322,6 +370,13 @@ else
     private List<MeuralItem[]> ItemRows => _selectedItems.Chunk(ItemGridColumns).ToList();
     private bool AllItemsSelected => _selectedItems.Count > 0 && _selectedItems.All(i => i.Id is long id && _selectedItemIds.Contains(id));
     private bool AnyGenericNamedItems => _selectedItems.Any(i => FileNaming.LooksGeneric(i.Name));
+    private bool IsFavorite(MeuralGallery gallery) => gallery.Id is long id && Session.FavoriteGalleryIds.Contains(id);
+
+    // Snapshot of every upload id already known before an upload attempt - passed to
+    // UploadAndAddToGalleryAsync so it can recognize a just-created item after a timeout (one
+    // that wasn't in this set is new, and might be the file that just "failed").
+    private HashSet<long> KnownItemIds =>
+        (Session.AllItemsCache ?? []).Where(i => i.Id.HasValue).Select(i => i.Id!.Value).ToHashSet();
     private HashSet<long> EditedItemIds => Session.GetEditedItemIds();
 
     private List<MeuralGallery> FilteredSortedPlaylists
@@ -332,17 +387,19 @@ else
             if (!string.IsNullOrWhiteSpace(_filter))
                 query = query.Where(p => (p.Name ?? "").Contains(_filter, StringComparison.OrdinalIgnoreCase));
 
-            query = _sortColumn switch
+            // Favorites always float to the top, regardless of sort column/direction - the
+            // chosen sort only decides ordering within the favorite and non-favorite groups.
+            var ordered = _sortColumn switch
             {
                 SortColumn.Items => _sortAscending
-                    ? query.OrderBy(p => p.ItemIds?.Count ?? 0)
-                    : query.OrderByDescending(p => p.ItemIds?.Count ?? 0),
+                    ? query.OrderByDescending(IsFavorite).ThenBy(p => p.ItemIds?.Count ?? 0)
+                    : query.OrderByDescending(IsFavorite).ThenByDescending(p => p.ItemIds?.Count ?? 0),
                 _ => _sortAscending
-                    ? query.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
-                    : query.OrderByDescending(p => p.Name, StringComparer.OrdinalIgnoreCase),
+                    ? query.OrderByDescending(IsFavorite).ThenBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
+                    : query.OrderByDescending(IsFavorite).ThenByDescending(p => p.Name, StringComparer.OrdinalIgnoreCase),
             };
 
-            return query.ToList();
+            return ordered.ToList();
         }
     }
 
@@ -352,6 +409,7 @@ else
         // Loaded once up front (rather than per-click) so the tile grid can decide which of the
         // two AI suggest buttons to show without an async round trip per tile.
         _aiSettings = await Session.LoadAiSettingsAsync();
+        _cropFeatureEnabled = (await Preferences.LoadAsync()).CropFeatureEnabled;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -398,6 +456,7 @@ else
         _selectCts?.Dispose();
         var cts = _selectCts = new CancellationTokenSource();
 
+        CleanupFailedUploadsTempDir();
         _selectedPlaylist = gallery;
         // Show what the shared account-wide cache already knows about this playlist's items
         // instantly, instead of blanking the grid while ReloadSelectedItemsAsync below re-fetches
@@ -410,6 +469,14 @@ else
         if (gallery.Id is not long galleryId)
             return;
         await ReloadSelectedItemsAsync(galleryId, cts.Token);
+    }
+
+    private async Task ToggleFavoriteAsync(MeuralGallery gallery)
+    {
+        if (gallery.Id is not long id)
+            return;
+
+        await Session.SetGalleryFavoriteAsync(id, !IsFavorite(gallery));
     }
 
     private List<MeuralItem> GetCachedItems(MeuralGallery gallery)
@@ -628,12 +695,6 @@ else
         if (files.Count == 0)
             return;
 
-        // Same crop dialog as the preview pane's "Crop 16:9/9:16" buttons, shown once per picked
-        // file before anything is uploaded - fed a blob: URL built client-side straight from the
-        // <input>'s own FileList, so cropping a not-yet-uploaded file needs no server round trip.
-        // allowSkip offers an "Upload as-is" button here (not shown for the preview-pane replace
-        // flow, where there's nothing sensible to upload unmodified). Cancelling a given file's
-        // crop just skips that file rather than aborting the batch.
         var tempDir = Path.Combine(Path.GetTempPath(), "meuralmanager-web-uploads", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDir);
         // Keyed by the path that actually gets uploaded, to a path holding that file's pre-crop
@@ -641,24 +702,53 @@ else
         // destructively reverted too, same as cropping an already-uploaded item.
         var originalPathsByUploadPath = new Dictionary<string, string>();
         var uploadPaths = new List<string>();
-        for (var i = 0; i < files.Count; i++)
-        {
-            var file = files[i];
-            var blobUrl = await JS.InvokeAsync<string?>("meuralCropper.blobUrlForFile", "playlistUploadInput", i);
-            if (blobUrl is null)
-                continue;
 
-            try
+        if (!_cropFeatureEnabled)
+        {
+            foreach (var file in files)
+                uploadPaths.Add(await CopyAsIsAsync(file, tempDir));
+        }
+        else
+        {
+            // Same crop dialog as the preview pane's "Crop 16:9/9:16" buttons, shown once per
+            // picked file before anything is uploaded - fed a blob: URL built client-side
+            // straight from the <input>'s own FileList, so cropping a not-yet-uploaded file
+            // needs no server round trip. allowSkip offers an "Upload as-is" button here (not
+            // shown for the preview-pane replace flow, where there's nothing sensible to upload
+            // unmodified), plus - once more than one file is left - an "Upload all as-is"
+            // shortcut that skips the crop-or-skip prompt for the rest of the batch. Cancelling
+            // a given file's crop just skips that file rather than aborting the batch.
+            for (var i = 0; i < files.Count; i++)
             {
-                var result = await _cropDialog.CropAsync(blobUrl, CropDialog.CropAspect.Wide, allowSkip: true);
+                var file = files[i];
+                var blobUrl = await JS.InvokeAsync<string?>("meuralCropper.blobUrlForFile", "playlistUploadInput", i);
+                if (blobUrl is null)
+                    continue;
+
+                CropDialog.CropResult result;
+                try
+                {
+                    result = await _cropDialog.CropAsync(blobUrl, CropDialog.CropAspect.Wide, allowSkip: true, remainingCount: files.Count - i);
+                }
+                finally
+                {
+                    await JS.InvokeVoidAsync("meuralCropper.revokeBlobUrl", blobUrl);
+                }
+
                 if (result.Outcome == CropDialog.CropOutcome.Cancelled)
                     continue;
 
-                string uploadPath;
+                if (result.Outcome == CropDialog.CropOutcome.SkippedAll)
+                {
+                    for (var j = i; j < files.Count; j++)
+                        uploadPaths.Add(await CopyAsIsAsync(files[j], tempDir));
+                    break;
+                }
+
                 if (result.Outcome == CropDialog.CropOutcome.Applied && result.CroppedPath is string croppedPath)
                 {
                     // The crop dialog always exports JPEG, regardless of the original's format.
-                    uploadPath = Path.Combine(tempDir, $"{Path.GetFileNameWithoutExtension(file.Name)}.jpg");
+                    var uploadPath = Path.Combine(tempDir, $"{Path.GetFileNameWithoutExtension(file.Name)}.jpg");
                     File.Move(croppedPath, uploadPath, overwrite: true);
 
                     var originalPath = Path.Combine(tempDir, $"original-{i}-{file.Name}");
@@ -666,22 +756,13 @@ else
                     await using (var fileStream = File.Create(originalPath))
                         await browserStream.CopyToAsync(fileStream);
                     originalPathsByUploadPath[uploadPath] = originalPath;
+
+                    uploadPaths.Add(uploadPath);
                 }
                 else
                 {
-                    // Uploaded as-is - keep the original extension so the content-type Meural is
-                    // sent (guessed from the file extension) actually matches these bytes.
-                    uploadPath = Path.Combine(tempDir, file.Name);
-                    await using var browserStream = file.OpenReadStream(maxAllowedSize: 25_000_000);
-                    await using var fileStream = File.Create(uploadPath);
-                    await browserStream.CopyToAsync(fileStream);
+                    uploadPaths.Add(await CopyAsIsAsync(file, tempDir));
                 }
-
-                uploadPaths.Add(uploadPath);
-            }
-            finally
-            {
-                await JS.InvokeVoidAsync("meuralCropper.revokeBlobUrl", blobUrl);
             }
         }
 
@@ -693,15 +774,16 @@ else
 
         _busy = true;
         var cts = _cts = new CancellationTokenSource();
+        UploadSummary? summary = null;
         try
         {
             _log.Append($"Uploading {uploadPaths.Count} image(s) to \"{_selectedPlaylist.Name}\"...");
-            var summary = await PlaylistService.UploadAndAddToGalleryAsync(Client, galleryId, uploadPaths, _log.AsProgress(), cts.Token);
-            _log.Append($"Finished: {summary.Done} uploaded, {summary.Failed} failed.");
-            if (summary.Failed > 0)
-                _toast.ShowError($"{summary.Failed} of {uploadPaths.Count} upload(s) failed.");
+            summary = await PlaylistService.UploadAndAddToGalleryAsync(Client, galleryId, uploadPaths, _log.AsProgress(), cts.Token, KnownItemIds);
+            _log.Append($"Finished: {summary.Value.Done} uploaded, {summary.Value.Failed} failed.");
+            if (summary.Value.Failed > 0)
+                _toast.ShowError($"{summary.Value.Failed} of {uploadPaths.Count} upload(s) failed.");
 
-            foreach (var (path, uploadedItem) in summary.Uploaded)
+            foreach (var (path, uploadedItem) in summary.Value.Uploaded)
             {
                 if (originalPathsByUploadPath.TryGetValue(path, out var originalPath) && uploadedItem.Id is long newId)
                     Session.SaveUploadOriginal(newId, originalPath);
@@ -720,11 +802,132 @@ else
         }
         finally
         {
-            try { Directory.Delete(tempDir, recursive: true); } catch (IOException) { }
+            // Failed uploads' bytes are kept around (rather than deleted with the rest of
+            // tempDir) so the "Retry" panel below can re-upload the exact same file without
+            // asking the user to re-pick (and, if applicable, re-crop) it.
+            if (summary is { Failures.Count: > 0 })
+                TrackFailedUploads(galleryId, tempDir, summary.Value.Failures);
+            else
+                try { Directory.Delete(tempDir, recursive: true); } catch (IOException) { }
+
             _cts?.Dispose();
             _cts = null;
             _busy = false;
         }
+    }
+
+    private static async Task<string> CopyAsIsAsync(IBrowserFile file, string tempDir)
+    {
+        // Uploaded as-is - keep the original extension so the content-type Meural is sent
+        // (guessed from the file extension) actually matches these bytes.
+        var uploadPath = Path.Combine(tempDir, file.Name);
+        await using var browserStream = file.OpenReadStream(maxAllowedSize: 25_000_000);
+        await using var fileStream = File.Create(uploadPath);
+        await browserStream.CopyToAsync(fileStream);
+        return uploadPath;
+    }
+
+    private void TrackFailedUploads(long galleryId, string tempDir, IReadOnlyList<UploadFailure> failures)
+    {
+        CleanupFailedUploadsTempDir();
+        _failedUploadsGalleryId = galleryId;
+        _failedUploadsTempDir = tempDir;
+        _failedUploads = failures.Select(f => new FailedUpload(Path.GetFileName(f.FilePath), f.FilePath, f.Error)).ToList();
+    }
+
+    private async Task RetryFailedUploadAsync(FailedUpload failure)
+    {
+        if (_failedUploadsGalleryId is not long galleryId)
+            return;
+
+        _busy = true;
+        var cts = _cts = new CancellationTokenSource();
+        try
+        {
+            _log.Append($"Retrying upload of \"{failure.FileName}\"...");
+            var summary = await PlaylistService.UploadAndAddToGalleryAsync(Client, galleryId, [failure.FilePath], _log.AsProgress(), cts.Token, KnownItemIds);
+            if (summary.Done > 0)
+            {
+                _failedUploads.Remove(failure);
+                _toast.ShowSuccess($"Uploaded \"{failure.FileName}\".");
+                await ReloadSelectedItemsAsync(galleryId, cts.Token);
+            }
+            else
+            {
+                var newError = summary.Failures.Count > 0 ? summary.Failures[0].Error : failure.Error;
+                var idx = _failedUploads.FindIndex(f => f.FilePath == failure.FilePath);
+                if (idx >= 0)
+                    _failedUploads[idx] = failure with { Error = newError };
+                _toast.ShowError($"Still couldn't upload \"{failure.FileName}\".");
+            }
+
+            if (_failedUploads.Count == 0)
+                CleanupFailedUploadsTempDir();
+        }
+        catch (OperationCanceledException)
+        {
+            HandleCancellation(cts, "Retry upload");
+        }
+        finally
+        {
+            _cts?.Dispose();
+            _cts = null;
+            _busy = false;
+        }
+    }
+
+    private async Task RetryAllFailedUploadsAsync()
+    {
+        if (_failedUploadsGalleryId is not long galleryId || _failedUploads.Count == 0)
+            return;
+
+        _busy = true;
+        var cts = _cts = new CancellationTokenSource();
+        try
+        {
+            var paths = _failedUploads.Select(f => f.FilePath).ToList();
+            _log.Append($"Retrying {paths.Count} failed upload(s)...");
+            var summary = await PlaylistService.UploadAndAddToGalleryAsync(Client, galleryId, paths, _log.AsProgress(), cts.Token, KnownItemIds);
+            _log.Append($"Retry finished: {summary.Done} uploaded, {summary.Failed} failed.");
+
+            var succeededPaths = summary.Uploaded.Select(u => u.FilePath).ToHashSet();
+            var errorByPath = summary.Failures.ToDictionary(f => f.FilePath, f => f.Error);
+            _failedUploads = _failedUploads
+                .Where(f => !succeededPaths.Contains(f.FilePath))
+                .Select(f => errorByPath.TryGetValue(f.FilePath, out var err) ? f with { Error = err } : f)
+                .ToList();
+
+            if (summary.Done > 0)
+                await ReloadSelectedItemsAsync(galleryId, cts.Token);
+
+            if (_failedUploads.Count == 0)
+                CleanupFailedUploadsTempDir();
+            else
+                _toast.ShowError($"{_failedUploads.Count} upload(s) still failing.");
+        }
+        catch (OperationCanceledException)
+        {
+            HandleCancellation(cts, "Retry uploads");
+        }
+        finally
+        {
+            _cts?.Dispose();
+            _cts = null;
+            _busy = false;
+        }
+    }
+
+    private void DismissFailedUploads() => CleanupFailedUploadsTempDir();
+
+    private void CleanupFailedUploadsTempDir()
+    {
+        if (_failedUploadsTempDir is string dir)
+        {
+            try { Directory.Delete(dir, recursive: true); } catch (IOException) { }
+        }
+        _failedUploadsTempDir = null;
+        _failedUploadsGalleryId = null;
+        _failedUploads = [];
     }
 
     private async Task RemoveSelectedAsync()
@@ -1205,5 +1408,6 @@ else
         _selectCts?.Cancel();
         _selectCts?.Dispose();
         _splitterRef?.Dispose();
+        CleanupFailedUploadsTempDir();
     }
 }
