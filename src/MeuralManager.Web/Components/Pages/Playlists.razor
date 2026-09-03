@@ -77,6 +77,7 @@ else
                 <table class="data-table playlist-table">
                     <thead>
                         <tr>
+                            <th class="fav-col"></th>
                             <th class="sortable" @onclick="() => SortBy(SortColumn.Name)">Name@(SortIndicator(SortColumn.Name))</th>
                             <th class="sortable id-col" @onclick="() => SortBy(SortColumn.Items)">Items@(SortIndicator(SortColumn.Items))</th>
                             <th>Frames</th>
@@ -85,14 +86,23 @@ else
                     <tbody>
                         @if (playlists.Count == 0)
                         {
-                            <tr><td colspan="3" class="empty-state">No playlists.</td></tr>
+                            <tr><td colspan="4" class="empty-state">No playlists.</td></tr>
                         }
                         @foreach (var gallery in playlists)
                         {
                             var frames = gallery.Id is long gid && frameNames.TryGetValue(gid, out var names) && names.Count > 0
                                 ? string.Join(", ", names)
                                 : "—";
+                            var isFavorite = IsFavorite(gallery);
                             <tr class="@(gallery.Id == _selectedPlaylist?.Id ? "selected" : "")" @onclick="() => SelectAsync(gallery)">
+                                <td class="fav-col" @onclick:stopPropagation="true">
+                                    <button type="button" class="fav-toggle @(isFavorite ? "is-favorite" : "")"
+                                            title="@(isFavorite ? "Remove from favorites" : "Mark as favorite")"
+                                            aria-label="@(isFavorite ? "Remove from favorites" : "Mark as favorite")"
+                                            @onclick="() => ToggleFavoriteAsync(gallery)">
+                                        ★
+                                    </button>
+                                </td>
                                 <td class="playlist-name-cell" title="@gallery.Name">@(gallery.Name ?? "(untitled)")</td>
                                 <td class="muted id-col">@(gallery.ItemIds?.Count ?? 0)</td>
                                 <td class="muted frames-cell" title="@frames">@frames</td>
@@ -360,6 +370,13 @@ else
     private List<MeuralItem[]> ItemRows => _selectedItems.Chunk(ItemGridColumns).ToList();
     private bool AllItemsSelected => _selectedItems.Count > 0 && _selectedItems.All(i => i.Id is long id && _selectedItemIds.Contains(id));
     private bool AnyGenericNamedItems => _selectedItems.Any(i => FileNaming.LooksGeneric(i.Name));
+    private bool IsFavorite(MeuralGallery gallery) => gallery.Id is long id && Session.FavoriteGalleryIds.Contains(id);
+
+    // Snapshot of every upload id already known before an upload attempt - passed to
+    // UploadAndAddToGalleryAsync so it can recognize a just-created item after a timeout (one
+    // that wasn't in this set is new, and might be the file that just "failed").
+    private HashSet<long> KnownItemIds =>
+        (Session.AllItemsCache ?? []).Where(i => i.Id.HasValue).Select(i => i.Id!.Value).ToHashSet();
     private HashSet<long> EditedItemIds => Session.GetEditedItemIds();
 
     private List<MeuralGallery> FilteredSortedPlaylists
@@ -370,17 +387,19 @@ else
             if (!string.IsNullOrWhiteSpace(_filter))
                 query = query.Where(p => (p.Name ?? "").Contains(_filter, StringComparison.OrdinalIgnoreCase));
 
-            query = _sortColumn switch
+            // Favorites always float to the top, regardless of sort column/direction - the
+            // chosen sort only decides ordering within the favorite and non-favorite groups.
+            var ordered = _sortColumn switch
             {
                 SortColumn.Items => _sortAscending
-                    ? query.OrderBy(p => p.ItemIds?.Count ?? 0)
-                    : query.OrderByDescending(p => p.ItemIds?.Count ?? 0),
+                    ? query.OrderByDescending(IsFavorite).ThenBy(p => p.ItemIds?.Count ?? 0)
+                    : query.OrderByDescending(IsFavorite).ThenByDescending(p => p.ItemIds?.Count ?? 0),
                 _ => _sortAscending
-                    ? query.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
-                    : query.OrderByDescending(p => p.Name, StringComparer.OrdinalIgnoreCase),
+                    ? query.OrderByDescending(IsFavorite).ThenBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
+                    : query.OrderByDescending(IsFavorite).ThenByDescending(p => p.Name, StringComparer.OrdinalIgnoreCase),
             };
 
-            return query.ToList();
+            return ordered.ToList();
         }
     }
 
@@ -450,6 +469,14 @@ else
         if (gallery.Id is not long galleryId)
             return;
         await ReloadSelectedItemsAsync(galleryId, cts.Token);
+    }
+
+    private async Task ToggleFavoriteAsync(MeuralGallery gallery)
+    {
+        if (gallery.Id is not long id)
+            return;
+
+        await Session.SetGalleryFavoriteAsync(id, !IsFavorite(gallery));
     }
 
     private List<MeuralItem> GetCachedItems(MeuralGallery gallery)
@@ -751,7 +778,7 @@ else
         try
         {
             _log.Append($"Uploading {uploadPaths.Count} image(s) to \"{_selectedPlaylist.Name}\"...");
-            summary = await PlaylistService.UploadAndAddToGalleryAsync(Client, galleryId, uploadPaths, _log.AsProgress(), cts.Token);
+            summary = await PlaylistService.UploadAndAddToGalleryAsync(Client, galleryId, uploadPaths, _log.AsProgress(), cts.Token, KnownItemIds);
             _log.Append($"Finished: {summary.Value.Done} uploaded, {summary.Value.Failed} failed.");
             if (summary.Value.Failed > 0)
                 _toast.ShowError($"{summary.Value.Failed} of {uploadPaths.Count} upload(s) failed.");
@@ -818,7 +845,7 @@ else
         try
         {
             _log.Append($"Retrying upload of \"{failure.FileName}\"...");
-            var summary = await PlaylistService.UploadAndAddToGalleryAsync(Client, galleryId, [failure.FilePath], _log.AsProgress(), cts.Token);
+            var summary = await PlaylistService.UploadAndAddToGalleryAsync(Client, galleryId, [failure.FilePath], _log.AsProgress(), cts.Token, KnownItemIds);
             if (summary.Done > 0)
             {
                 _failedUploads.Remove(failure);
@@ -860,7 +887,7 @@ else
         {
             var paths = _failedUploads.Select(f => f.FilePath).ToList();
             _log.Append($"Retrying {paths.Count} failed upload(s)...");
-            var summary = await PlaylistService.UploadAndAddToGalleryAsync(Client, galleryId, paths, _log.AsProgress(), cts.Token);
+            var summary = await PlaylistService.UploadAndAddToGalleryAsync(Client, galleryId, paths, _log.AsProgress(), cts.Token, KnownItemIds);
             _log.Append($"Retry finished: {summary.Done} uploaded, {summary.Failed} failed.");
 
             var succeededPaths = summary.Uploaded.Select(u => u.FilePath).ToHashSet();

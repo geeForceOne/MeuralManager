@@ -1038,6 +1038,28 @@ a { color: var(--accent-strong); }
     color: var(--text);
 }
 
+.fav-col {
+    width: 32px;
+}
+
+.fav-toggle {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    font-size: 1rem;
+    line-height: 1;
+    color: var(--text-muted);
+}
+
+.fav-toggle:hover {
+    color: var(--accent);
+}
+
+.fav-toggle.is-favorite {
+    color: var(--accent);
+}
+
 .playlist-name-cell,
 .frames-cell {
     max-width: 1px;
