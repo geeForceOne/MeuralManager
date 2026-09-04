@@ -2,11 +2,10 @@ name: Publish Docker image
 
 # Builds and pushes the web app's container image to GitHub Container Registry (ghcr.io) -
 # runs on GitHub's own runners, so no local Docker install is needed to keep this image current.
-# Triggers: every push to master (moves the `latest`/`master` tags), every `vX.Y.Z` tag (adds
-# matching semver tags), or manually via workflow_dispatch.
+# Triggers: every `vX.Y.Z` tag (moves `latest` and adds matching semver tags), or manually via
+# workflow_dispatch. Plain pushes to master do NOT publish - tag a release to publish.
 on:
   push:
-    branches: [master]
     tags: ["v*.*.*"]
   workflow_dispatch: {}
 
@@ -43,7 +42,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
 
