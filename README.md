@@ -6,10 +6,14 @@ playlist and cleanup tools the official Meural app doesn't give you.
 There's no separate account system — you sign in with your own Meural (Netgear) credentials, the
 same ones you use in the Meural app.
 
+![Dashboard](docs/images/mm-dashboard.png)
+
 ## Playlists
 
 The main page: a three-pane browser (playlist list, item grid, preview) for full playlist
 management.
+
+![Playlists](docs/images/mm-playlist.png)
 
 - Create, rename, and delete playlists; install one onto a Canvas frame
 - Add existing uploads or new local images to a playlist, or remove images from one
