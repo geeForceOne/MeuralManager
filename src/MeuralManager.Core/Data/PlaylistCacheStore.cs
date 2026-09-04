@@ -172,7 +172,7 @@ public sealed class PlaylistCacheStore
     {
         await using var conn = await OpenAsync(ct);
         await using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT Id, Alias FROM Devices ORDER BY Alias COLLATE NOCASE";
+        cmd.CommandText = "SELECT Id, Alias, LocalIp FROM Devices ORDER BY Alias COLLATE NOCASE";
 
         var devices = new List<MeuralDevice>();
         await using var reader = await cmd.ExecuteReaderAsync(ct);
@@ -182,6 +182,7 @@ public sealed class PlaylistCacheStore
             {
                 Id = reader.GetInt64(0),
                 Alias = reader.IsDBNull(1) ? null : reader.GetString(1),
+                LocalIp = reader.IsDBNull(2) ? null : reader.GetString(2),
             });
         }
         return devices;
@@ -358,9 +359,10 @@ public sealed class PlaylistCacheStore
         await using (var deviceGalleryCmd = conn.CreateCommand())
         {
             deviceCmd.Transaction = tx;
-            deviceCmd.CommandText = "INSERT INTO Devices (Id, Alias) VALUES (@id, @alias)";
+            deviceCmd.CommandText = "INSERT INTO Devices (Id, Alias, LocalIp) VALUES (@id, @alias, @localIp)";
             var dId = deviceCmd.Parameters.Add("@id", SqliteType.Integer);
             var dAlias = deviceCmd.Parameters.Add("@alias", SqliteType.Text);
+            var dLocalIp = deviceCmd.Parameters.Add("@localIp", SqliteType.Text);
 
             deviceGalleryCmd.Transaction = tx;
             deviceGalleryCmd.CommandText = "INSERT INTO DeviceGalleries (DeviceId, GalleryId) VALUES (@deviceId, @galleryId)";
@@ -374,6 +376,7 @@ public sealed class PlaylistCacheStore
 
                 dId.Value = id;
                 dAlias.Value = (object?)device.Alias ?? DBNull.Value;
+                dLocalIp.Value = (object?)device.LocalIp ?? DBNull.Value;
                 await deviceCmd.ExecuteNonQueryAsync(ct);
             }
 
@@ -587,7 +590,8 @@ public sealed class PlaylistCacheStore
             );
             CREATE TABLE IF NOT EXISTS Devices (
                 Id INTEGER PRIMARY KEY,
-                Alias TEXT
+                Alias TEXT,
+                LocalIp TEXT
             );
             CREATE TABLE IF NOT EXISTS DeviceGalleries (
                 DeviceId INTEGER NOT NULL,
@@ -607,6 +611,20 @@ public sealed class PlaylistCacheStore
             );
             """;
         await cmd.ExecuteNonQueryAsync(ct);
+
+        // Devices existed before LocalIp did - CREATE TABLE IF NOT EXISTS above is a no-op
+        // against a DB from before that column existed, so add it here if it's still missing.
+        await using (var pragmaCmd = conn.CreateCommand())
+        {
+            pragmaCmd.CommandText = "SELECT COUNT(*) FROM pragma_table_info('Devices') WHERE name = 'LocalIp'";
+            var hasLocalIp = (long)(await pragmaCmd.ExecuteScalarAsync(ct))! > 0;
+            if (!hasLocalIp)
+            {
+                await using var alterCmd = conn.CreateCommand();
+                alterCmd.CommandText = "ALTER TABLE Devices ADD COLUMN LocalIp TEXT";
+                await alterCmd.ExecuteNonQueryAsync(ct);
+            }
+        }
 
         return conn;
     }

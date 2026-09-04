@@ -37,6 +37,23 @@ delete a playlist that contained them) — back them up as a ZIP, then delete th
 Playlists that exist in the account but aren't loaded on any Canvas frame — same backup-then-
 delete flow.
 
+## Frame Remote Control
+
+A toolbar at the bottom of the app for controlling a Canvas frame directly: next/previous image,
+power on/off, switching its loaded playlist, and a thumbnail of what's currently showing. Add
+another frame (or a second set of controls for the same one) with the `+` button; each has its
+own frame picker. Turn it off in Settings if it doesn't apply to you.
+
+Unlike the rest of the app, this talks directly to the frame over your local network instead of
+through Meural's cloud, so it needs:
+
+- **A fixed local IP for the frame** — set a DHCP reservation for it in your router. This app
+  only learns a frame's IP from an account scan, so if the IP changes afterward the toolbar shows
+  that frame as unreachable until the next scan.
+- **Network access from wherever this app runs** to that IP — the default Docker setup below
+  works out of the box (outbound LAN access isn't blocked by container networking), but a more
+  locked-down network setup might need adjusting.
+
 ## With Docker
 
 Using docker compose:

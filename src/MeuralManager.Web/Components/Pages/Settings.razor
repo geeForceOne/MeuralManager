@@ -44,6 +44,34 @@
 </div>
 
 <div class="settings-group">
+    <h2>Frame Remote Control</h2>
+    <div class="setting-row">
+        <div>
+            <div class="setting-label">Remote control toolbar</div>
+            <div class="muted setting-description">
+                Show a toolbar at the bottom of the app for controlling a Canvas frame directly -
+                next/previous image, power, and switching its playlist.
+            </div>
+        </div>
+        <label class="switch">
+            <input type="checkbox" checked="@_remoteControlEnabled" @onchange="OnRemoteControlToggleChanged" />
+            <span class="switch-slider"></span>
+        </label>
+    </div>
+    <p class="muted setting-description">
+        Unlike the rest of this app, these controls talk directly to the frame over your local
+        network (not through Meural's cloud) - turn this off if the machine running this app
+        can't reach your frame's local IP address.
+    </p>
+    <p class="muted setting-description">
+        <strong>Your frame's local IP needs to stay fixed</strong> - set a DHCP reservation for
+        it in your router. This app only learns a frame's IP from a full account scan, so if it
+        changes afterward the toolbar will show that frame as unreachable until you rescan -
+        rescanning from the Dashboard re-fetches each frame's current IP and fixes it.
+    </p>
+</div>
+
+<div class="settings-group">
     <h2>AI Naming</h2>
     <p class="muted setting-description">
         On the Playlists page, get an AI-suggested name for an image (handy for uploads with a generic
@@ -109,6 +137,7 @@
 @code {
     private bool _showPictureOfTheMoment = true;
     private bool _cropFeatureEnabled = true;
+    private bool _remoteControlEnabled = true;
 
     private AiProvider _provider = AiProvider.Claude;
     private RenameStyle _renameStyle = RenameStyle.Professional;
@@ -128,6 +157,7 @@
         var prefs = await Preferences.LoadAsync();
         _showPictureOfTheMoment = prefs.ShowPictureOfTheMoment;
         _cropFeatureEnabled = prefs.CropFeatureEnabled;
+        _remoteControlEnabled = prefs.RemoteControlEnabled;
 
         var aiSettings = await Session.LoadAiSettingsAsync();
         _provider = aiSettings.Provider;
@@ -157,6 +187,15 @@
         // OnToggleChanged above.
         var prefs = await Preferences.LoadAsync();
         await Preferences.SaveAsync(prefs with { CropFeatureEnabled = _cropFeatureEnabled });
+    }
+
+    private async Task OnRemoteControlToggleChanged(ChangeEventArgs e)
+    {
+        _remoteControlEnabled = (bool)e.Value!;
+        // Loads-then-patches so this doesn't clobber other preferences saved elsewhere - see
+        // OnToggleChanged above.
+        var prefs = await Preferences.LoadAsync();
+        await Preferences.SaveAsync(prefs with { RemoteControlEnabled = _remoteControlEnabled });
     }
 
     private async Task SaveAiSettingsAsync()

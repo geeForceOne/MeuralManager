@@ -22,6 +22,10 @@
 
     private static readonly Release[] Releases =
     [
+        new("1.7.0", "2026-09-04",
+        [
+            "Added a frame remote control toolbar at the bottom of the app - next/previous image, power on/off, and switching the loaded playlist, straight from the browser, plus a current-image thumbnail. Supports multiple frames and multiple toolbar instances at once. Talks directly to the frame over your local network, so it needs a fixed IP (a DHCP reservation) and network access from wherever this app runs - can be turned off in Settings.",
+        ]),
         new("1.6.0", "2026-09-03",
         [
             "Playlists: uploading more than one image now offers \"Upload all as-is\" to skip the crop prompt for the rest of the batch in one click",

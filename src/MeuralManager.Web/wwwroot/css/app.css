@@ -122,20 +122,140 @@ a { color: var(--accent-strong); }
     height: 100vh;
 }
 
-.app-main {
+/* Column alongside the sidebar: the page content on top, the remote control toolbar bar (when
+   showing) below it - so the sidebar keeps running the full viewport height and the toolbar only
+   spans the content area's width, not underneath the sidebar. */
+.app-main-wrap {
     flex: 1;
     min-width: 0;
-    width: 100%;
-    padding: 32px 40px;
-    /* Bounded to exactly the viewport height and scrolling internally (rather than the whole
-       page scrolling) lets pages like Playlists size a "fill the rest of the screen" section
-       with plain flexbox (flex: 1; min-height: 0;) instead of guessing pixel offsets. Pages
-       that don't need that just scroll inside this box instead of at the document level -
-       visually the same, nothing else changes for them. */
     height: 100%;
     display: flex;
     flex-direction: column;
+}
+
+.app-main {
+    flex: 1;
+    width: 100%;
+    padding: 32px 40px;
+    /* Bounded to exactly its share of the viewport height and scrolling internally (rather than
+       the whole page scrolling) lets pages like Playlists size a "fill the rest of the screen"
+       section with plain flexbox (flex: 1; min-height: 0;) instead of guessing pixel offsets.
+       Pages that don't need that just scroll inside this box instead of at the document level -
+       visually the same, nothing else changes for them. */
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
     overflow-y: auto;
+}
+
+/* ---------- Frame remote control toolbar ---------- */
+
+.remote-toolbar-bar {
+    flex: 0 0 auto;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 10px 16px;
+    background: var(--bg-elevated);
+    border-top: 1px solid var(--border);
+}
+
+.remote-control {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    background: var(--bg-inset);
+    border-radius: var(--radius-md);
+}
+
+.remote-control-unreachable {
+    opacity: 0.55;
+}
+
+.remote-control-select {
+    width: auto;
+    max-width: 160px;
+    padding: 6px 8px;
+    font-size: 0.82rem;
+}
+
+.remote-control-select-playlist {
+    max-width: 260px;
+}
+
+.remote-control-hint {
+    font-size: 0.82rem;
+    padding: 0 6px;
+}
+
+.remote-control-thumb {
+    position: relative;
+    width: 32px;
+    height: 32px;
+    flex: 0 0 auto;
+}
+
+.remote-control-thumb-inner {
+    width: 100%;
+    height: 100%;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+}
+
+.remote-control-thumb-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+/* Press-and-hold preview: hidden until .remote-control-thumb is :active (mouse/finger down),
+   and hidden again the instant it's released - no JS or component state needed, just CSS. */
+.remote-control-thumb-preview {
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 10px);
+    transform: translateX(-50%) scale(0.85);
+    width: 220px;
+    height: 220px;
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-md);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.1s ease, transform 0.1s ease;
+    z-index: 20;
+}
+
+.remote-control-thumb-preview-img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+}
+
+.remote-control-thumb:active .remote-control-thumb-preview {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(-50%) scale(1);
+}
+
+.remote-control-thumb-empty {
+    width: 100%;
+    height: 100%;
+}
+
+.remote-control-add,
+.remote-control-remove {
+    font-size: 1rem;
+    font-weight: 600;
+    line-height: 1;
 }
 
 .session-check {

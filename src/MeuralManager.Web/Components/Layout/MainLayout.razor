@@ -2,6 +2,7 @@
 @implements IDisposable
 @inject MeuralSessionState Session
 @inject WebSessionStore SessionStore
+@inject UserPreferencesStore Preferences
 
 @if (_checkingSession)
 {
@@ -18,28 +19,35 @@ else
 {
     <div class="app-shell">
         <NavMenu Email="@Session.Email" OnSignOut="SignOutAsync" />
-        <main class="app-main">
-            <ErrorBoundary @ref="_errorBoundary">
-                <ChildContent>
-                    @Body
-                </ChildContent>
-                <ErrorContent Context="ex">
-                    <div class="error-boundary">
-                        <h2>Something went wrong</h2>
-                        <p class="muted">
-                            @ex.GetType().Name: @ex.Message
-                        </p>
-                        <p class="muted">
-                            This page hit an unexpected error instead of just hanging - it's been logged server-side.
-                        </p>
-                        <div class="error-boundary-actions">
-                            <button class="btn btn-primary" @onclick="RecoverFromError">Try again</button>
-                            <a class="btn btn-ghost" href="/">Back to Dashboard</a>
+        <div class="app-main-wrap">
+            <main class="app-main">
+                <ErrorBoundary @ref="_errorBoundary">
+                    <ChildContent>
+                        @Body
+                    </ChildContent>
+                    <ErrorContent Context="ex">
+                        <div class="error-boundary">
+                            <h2>Something went wrong</h2>
+                            <p class="muted">
+                                @ex.GetType().Name: @ex.Message
+                            </p>
+                            <p class="muted">
+                                This page hit an unexpected error instead of just hanging - it's been logged server-side.
+                            </p>
+                            <div class="error-boundary-actions">
+                                <button class="btn btn-primary" @onclick="RecoverFromError">Try again</button>
+                                <a class="btn btn-ghost" href="/">Back to Dashboard</a>
+                            </div>
                         </div>
-                    </div>
-                </ErrorContent>
-            </ErrorBoundary>
-        </main>
+                    </ErrorContent>
+                </ErrorBoundary>
+            </main>
+
+            @if (_remoteControlEnabled && Session.AllDevicesCache is { Count: > 0 })
+            {
+                <FrameRemoteBar />
+            }
+        </div>
     </div>
 
     @if (Session.IsScanning)
@@ -57,6 +65,7 @@ else
 
 @code {
     private bool _checkingSession = true;
+    private bool _remoteControlEnabled = true;
     private ErrorBoundary? _errorBoundary;
 
     private void RecoverFromError() => _errorBoundary?.Recover();
@@ -64,6 +73,7 @@ else
     protected override void OnInitialized()
     {
         Session.Changed += HandleSessionChanged;
+        Preferences.Changed += HandlePreferencesChanged;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -73,6 +83,8 @@ else
 
         try
         {
+            _remoteControlEnabled = (await Preferences.LoadAsync()).RemoteControlEnabled;
+
             var saved = await SessionStore.LoadAsync();
             if (saved is null)
                 return;
@@ -99,11 +111,21 @@ else
 
     private void HandleSessionChanged() => InvokeAsync(StateHasChanged);
 
+    private void HandlePreferencesChanged() => InvokeAsync(async () =>
+    {
+        _remoteControlEnabled = (await Preferences.LoadAsync()).RemoteControlEnabled;
+        StateHasChanged();
+    });
+
     private async Task SignOutAsync()
     {
         await SessionStore.ClearAsync();
         Session.SignOut();
     }
 
-    public void Dispose() => Session.Changed -= HandleSessionChanged;
+    public void Dispose()
+    {
+        Session.Changed -= HandleSessionChanged;
+        Preferences.Changed -= HandlePreferencesChanged;
+    }
 }
