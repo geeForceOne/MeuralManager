@@ -33,50 +33,36 @@ delete a playlist that contained them) — back them up as a ZIP, then delete th
 Playlists that exist in the account but aren't loaded on any Canvas frame — same backup-then-
 delete flow.
 
-## Run it (no source checkout needed)
+## With Docker
 
+Using docker compose:
+
+```yaml
+services:
+  meuralmanager:
+    image: ghcr.io/geeforceone/meuralmanager:latest
+    container_name: meuralmanager
+    ports:
+      - 8080:8080
+    volumes:
+      - meuralmanager-keys:/data/keys
+      - meuralmanager-cache:/data/cache
+    restart: unless-stopped
+
+volumes:
+  meuralmanager-keys:
+  meuralmanager-cache:
 ```
-docker run -d --name meuralmanager -p 8080:8080 ghcr.io/geeforceone/meuralmanager:latest
-```
 
-Then open `http://localhost:8080`.
+or docker run:
 
-That's enough to try it out, but two things are worth persisting across restarts with volumes:
-
-```
-docker run -d --name meuralmanager -p 8080:8080 \
+```bash
+docker run -d --name meuralmanager \
+  -p 8080:8080 \
   -v meuralmanager-keys:/data/keys \
   -v meuralmanager-cache:/data/cache \
+  --restart unless-stopped \
   ghcr.io/geeforceone/meuralmanager:latest
-```
-
-- `/data/keys` — encryption keys for the browser-stored sign-in session. Without this volume,
-  restarting the container silently signs everyone out (no data loss, just a fresh login).
-- `/data/cache` — the per-account scan cache (uploads/playlists/frames), one SQLite file per
-  signed-in email. Without this volume, every restart needs a fresh full scan.
-
-## Run it with Docker Compose
-
-The repo's `docker-compose.yml` pulls the published image and sets up both volumes above already:
-
-```
-git clone https://github.com/geeForceOne/MeuralManager.git
-cd MeuralManager
-docker compose up -d
-```
-
-Then open `http://localhost:8080`. To update to the latest image later:
-
-```
-docker compose pull
-docker compose up -d
-```
-
-To stop it (add `-v` to also delete the volumes, which signs everyone out and clears the scan
-cache):
-
-```
-docker compose down
 ```
 
 ## Build from source instead
