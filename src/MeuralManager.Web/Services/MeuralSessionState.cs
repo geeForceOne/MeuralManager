@@ -482,6 +482,34 @@ public sealed class MeuralSessionState(IHostEnvironment env, ImageCacheManager i
         await _cacheStore.SetSettingAsync("AiOpenAiModel", settings.OpenAiModel, CancellationToken.None);
     }
 
+    // The frame remote control toolbar's instances (one device id per toolbar, in order - the
+    // first is the non-removable master) - stored per-account like AiSettings above, since a
+    // toolbar instance points at a specific device id from this account. Comma-separated with
+    // empty segments for "no device picked yet" rather than JSON, since it's just a flat list of
+    // nullable longs.
+    public async Task<List<long?>> LoadRemoteToolbarDeviceIdsAsync()
+    {
+        if (_cacheStore is null)
+            return [];
+
+        var raw = await _cacheStore.GetSettingAsync("RemoteToolbarDeviceIds", CancellationToken.None);
+        if (string.IsNullOrEmpty(raw))
+            return [];
+
+        return raw.Split(',')
+            .Select(segment => long.TryParse(segment, out var id) ? (long?)id : null)
+            .ToList();
+    }
+
+    public async Task SaveRemoteToolbarDeviceIdsAsync(IEnumerable<long?> deviceIds)
+    {
+        if (_cacheStore is null)
+            return;
+
+        var raw = string.Join(",", deviceIds.Select(id => id?.ToString() ?? ""));
+        await _cacheStore.SetSettingAsync("RemoteToolbarDeviceIds", raw, CancellationToken.None);
+    }
+
     private string? Protect(string? plainText) =>
         string.IsNullOrEmpty(plainText) ? null : _protector.Protect(plainText);
 

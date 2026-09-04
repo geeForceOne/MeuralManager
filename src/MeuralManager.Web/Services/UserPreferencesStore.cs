@@ -16,7 +16,13 @@ public sealed class UserPreferencesStore(ProtectedLocalStorage storage)
         bool ShowPictureOfTheMoment = true,
         double? PlaylistListPaneWidth = null,
         double? PreviewPaneWidth = null,
-        bool CropFeatureEnabled = true);
+        bool CropFeatureEnabled = true,
+        bool RemoteControlEnabled = true);
+
+    // Fired after a successful save so MainLayout (which stays mounted for the whole circuit,
+    // unlike a page) can pick up a toggle - e.g. the remote control toolbar - flipped on the
+    // Settings page without needing a full reload. Mirrors MeuralSessionState.Changed.
+    public event Action? Changed;
 
     public async Task<StoredPreferences> LoadAsync()
     {
@@ -37,6 +43,7 @@ public sealed class UserPreferencesStore(ProtectedLocalStorage storage)
         try
         {
             await storage.SetAsync(Key, preferences);
+            Changed?.Invoke();
         }
         catch
         {
