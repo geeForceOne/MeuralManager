@@ -1,0 +1,218 @@
+@implements IDisposable
+@inject MeuralSessionState Session
+
+<div class="remote-control @(IsReachable ? "" : "remote-control-unreachable")">
+    <select class="text-input remote-control-select" value="@DeviceId" @onchange="OnDeviceChangedAsync" title="Frame">
+        @foreach (var device in Devices)
+        {
+            <option value="@device.Id">@(device.Alias ?? $"Frame {device.Id}")</option>
+        }
+    </select>
+
+    @if (SelectedDevice?.LocalIp is not { Length: > 0 })
+    {
+        <span class="muted remote-control-hint" title="This frame's local IP hasn't been recorded yet - rescan your account from the Dashboard to enable remote control for it.">
+            Rescan needed
+        </span>
+    }
+    else
+    {
+        <button type="button" class="btn btn-ghost btn-icon btn-sm" title="Previous image" disabled="@(!CanOperate)" @onclick="PreviousAsync">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 6l-6 6 6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button type="button" class="btn btn-ghost btn-icon btn-sm" title="@(_sleeping == true ? "Turn frame on" : "Turn frame off")" disabled="@(!CanOperate || _sleeping is null)" @onclick="TogglePowerAsync">
+            @if (_sleeping == true)
+            {
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v8" stroke-linecap="round"/><path d="M6.5 6.5a7 7 0 1 0 11 0" stroke-linecap="round"/></svg>
+            }
+            else
+            {
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8"><path d="M12 3v8" stroke-linecap="round"/><path d="M6.5 6.5a7 7 0 1 0 11 0" stroke-linecap="round"/></svg>
+            }
+        </button>
+        <button type="button" class="btn btn-ghost btn-icon btn-sm" title="Next image" disabled="@(!CanOperate)" @onclick="NextAsync">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+
+        <select class="text-input remote-control-select remote-control-select-playlist" value="@_currentGalleryId" @onchange="OnPlaylistChangedAsync" disabled="@(!CanOperate)" title="Playlist">
+            <option value="">@(IsReachable ? "Select a playlist…" : "Unreachable")</option>
+            @foreach (var gallery in DeviceGalleries)
+            {
+                <option value="@gallery.Id">@(gallery.Name ?? "(untitled)")</option>
+            }
+        </select>
+
+        <div class="remote-control-thumb" title="@(IsReachable ? "Currently showing - press and hold to enlarge" : "Frame unreachable on the local network")">
+            <div class="remote-control-thumb-inner">
+                @if (IsReachable && _sleeping == false && _currentItemId is long itemId)
+                {
+                    <ItemImage Item="@(new MeuralItem { Id = itemId })" CssClass="remote-control-thumb-img" Loading="eager" />
+                }
+                else
+                {
+                    <div class="remote-control-thumb-empty"></div>
+                }
+            </div>
+            @if (IsReachable && _sleeping == false && _currentItemId is long previewItemId)
+            {
+                <div class="remote-control-thumb-preview">
+                    <ItemImage Item="@(new MeuralItem { Id = previewItemId })" CssClass="remote-control-thumb-preview-img" Loading="eager" />
+                </div>
+            }
+        </div>
+    }
+
+    @if (IsMaster)
+    {
+        <button type="button" class="btn btn-ghost btn-icon btn-sm remote-control-add" title="Add another frame control" @onclick="OnAdd">+</button>
+    }
+    else
+    {
+        <button type="button" class="btn btn-ghost btn-icon btn-sm remote-control-remove" title="Remove this control" @onclick="OnRemove">×</button>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public List<MeuralDevice> Devices { get; set; } = [];
+    [Parameter] public long? DeviceId { get; set; }
+    [Parameter] public EventCallback<long?> DeviceIdChanged { get; set; }
+    [Parameter] public bool IsMaster { get; set; }
+    [Parameter] public EventCallback OnAdd { get; set; }
+    [Parameter] public EventCallback OnRemove { get; set; }
+
+    private long? _lastKnownDeviceId;
+    private bool _busy;
+    private bool _reachable;
+    private bool? _sleeping;
+    private long? _currentGalleryId;
+    private long? _currentItemId;
+    private CancellationTokenSource? _pollCts;
+
+    private MeuralDevice? SelectedDevice => Devices.FirstOrDefault(d => d.Id == DeviceId);
+
+    // Only the playlists already loaded on this frame - not every playlist in the account -
+    // since this dropdown is for switching which of the frame's own playlists is showing, not
+    // for installing a new one onto it.
+    private List<MeuralGallery> DeviceGalleries =>
+        SelectedDevice?.Id is long deviceId && Session.DeviceGalleriesCache is { } cache && cache.TryGetValue(deviceId, out var galleries)
+            ? galleries
+            : [];
+    private bool IsReachable => _reachable;
+    private bool CanOperate => !_busy && SelectedDevice?.LocalIp is { Length: > 0 };
+
+    protected override void OnInitialized()
+    {
+        _lastKnownDeviceId = DeviceId;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (DeviceId == _lastKnownDeviceId)
+            return;
+
+        _lastKnownDeviceId = DeviceId;
+        _sleeping = null;
+        _currentGalleryId = null;
+        _currentItemId = null;
+        await RefreshStatusAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+
+        await RefreshStatusAsync();
+        _pollCts = new CancellationTokenSource();
+        _ = PollLoopAsync(_pollCts.Token);
+    }
+
+    private async Task PollLoopAsync(CancellationToken ct)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(10));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(ct))
+                await RefreshStatusAsync();
+        }
+        catch (OperationCanceledException)
+        {
+            // Component disposed - stop polling.
+        }
+    }
+
+    private async Task RefreshStatusAsync()
+    {
+        if (SelectedDevice?.LocalIp is not { Length: > 0 } ip)
+        {
+            _reachable = false;
+            _sleeping = null;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        var sleeping = await MeuralLocalDeviceClient.GetSleepStatusAsync(ip);
+        _reachable = sleeping.HasValue;
+        _sleeping = sleeping;
+
+        if (sleeping == false)
+        {
+            var status = await MeuralLocalDeviceClient.GetGalleryStatusAsync(ip);
+            _currentGalleryId = status?.CurrentGalleryId;
+            _currentItemId = status?.CurrentItemId;
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnDeviceChangedAsync(ChangeEventArgs e)
+    {
+        var id = long.TryParse(e.Value?.ToString(), out var parsed) ? parsed : (long?)null;
+        DeviceId = id;
+        await DeviceIdChanged.InvokeAsync(id);
+    }
+
+    private Task PreviousAsync() => SendCommandAsync(ip => MeuralLocalDeviceClient.PreviousImageAsync(ip));
+
+    private Task NextAsync() => SendCommandAsync(ip => MeuralLocalDeviceClient.NextImageAsync(ip));
+
+    private Task TogglePowerAsync() => SendCommandAsync(ip => _sleeping == true
+        ? MeuralLocalDeviceClient.ResumeAsync(ip)
+        : MeuralLocalDeviceClient.SuspendAsync(ip));
+
+    private async Task SendCommandAsync(Func<string, Task<bool>> command)
+    {
+        if (SelectedDevice?.LocalIp is not { Length: > 0 } ip || _busy)
+            return;
+
+        _busy = true;
+        StateHasChanged();
+        try
+        {
+            await command(ip);
+            // The frame needs a moment to act before its reported state reflects the change.
+            await Task.Delay(1500);
+            await RefreshStatusAsync();
+        }
+        finally
+        {
+            _busy = false;
+            StateHasChanged();
+        }
+    }
+
+    // Always the local change_gallery command, never the cloud AddGalleryToDeviceAsync ("load
+    // gallery") - this dropdown only offers playlists already on the frame (see DeviceGalleries),
+    // and switching among those should be instant, not trigger a fresh download of that
+    // playlist's images. See MeuralLocalDeviceClient.ChangeGalleryAsync.
+    private Task OnPlaylistChangedAsync(ChangeEventArgs e) =>
+        long.TryParse(e.Value?.ToString(), out var galleryId)
+            ? SendCommandAsync(ip => MeuralLocalDeviceClient.ChangeGalleryAsync(ip, galleryId))
+            : Task.CompletedTask;
+
+    public void Dispose()
+    {
+        _pollCts?.Cancel();
+        _pollCts?.Dispose();
+    }
+}
