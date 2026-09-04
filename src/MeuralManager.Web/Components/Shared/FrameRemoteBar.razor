@@ -1,0 +1,71 @@
+@inject MeuralSessionState Session
+
+<div class="remote-toolbar-bar">
+    @foreach (var instance in _instances)
+    {
+        <FrameRemoteControl @key="instance.Id"
+                            Devices="Devices"
+                            DeviceId="@instance.DeviceId"
+                            DeviceIdChanged="@(id => OnInstanceDeviceIdChanged(instance, id))"
+                            IsMaster="@(instance == _instances[0])"
+                            OnAdd="AddInstance"
+                            OnRemove="@(() => RemoveInstance(instance))" />
+    }
+</div>
+
+@code {
+    // MainLayout, which mounts this, stays alive across page navigation for the whole session,
+    // so instances survive navigating around the app without re-loading anything - but the list
+    // itself (which devices, how many instances) is persisted per-account (see
+    // MeuralSessionState.LoadRemoteToolbarDeviceIdsAsync) so it's also there again next time this
+    // account signs in, instead of resetting to one default toolbar every session.
+    private sealed class Instance
+    {
+        public Guid Id { get; } = Guid.NewGuid();
+        public long? DeviceId { get; set; }
+    }
+
+    private readonly List<Instance> _instances = [];
+
+    private List<MeuralDevice> Devices => Session.AllDevicesCache ?? [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var savedDeviceIds = await Session.LoadRemoteToolbarDeviceIdsAsync();
+        if (savedDeviceIds.Count > 0)
+        {
+            foreach (var deviceId in savedDeviceIds)
+                _instances.Add(new Instance { DeviceId = deviceId });
+        }
+        else
+        {
+            _instances.Add(new Instance { DeviceId = Devices.FirstOrDefault(d => d.Id.HasValue)?.Id });
+        }
+    }
+
+    private void OnInstanceDeviceIdChanged(Instance instance, long? deviceId)
+    {
+        instance.DeviceId = deviceId;
+        _ = SaveAsync();
+    }
+
+    private void AddInstance()
+    {
+        // Starts pointed at the same frame as the toolbar it was duplicated from, rather than
+        // defaulting back to the first device - duplicating is usually "I want a second set of
+        // controls for a different frame right next to this one", so starting from the same
+        // frame and letting the user re-point the new dropdown reads better than resetting.
+        _instances.Add(new Instance { DeviceId = _instances[^1].DeviceId });
+        _ = SaveAsync();
+    }
+
+    private void RemoveInstance(Instance instance)
+    {
+        if (instance == _instances[0])
+            return;
+        _instances.Remove(instance);
+        _ = SaveAsync();
+    }
+
+    private Task SaveAsync() => Session.SaveRemoteToolbarDeviceIdsAsync(_instances.Select(i => i.DeviceId));
+}
