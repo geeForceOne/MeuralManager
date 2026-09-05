@@ -215,12 +215,25 @@ public sealed class MeuralApiClient : IDisposable
 
     // Loads (installs) a gallery on a device - confirmed against davemorin/meural-manager's
     // server.js and the Home Assistant integration's pymeural.py (device_load_gallery), per
-    // CLAUDE.md's rule to verify undocumented endpoints there rather than guess. Neither
-    // reference exposes a way to unload/remove a gallery from a device - only "load" exists.
+    // CLAUDE.md's rule to verify undocumented endpoints there rather than guess. Neither of those
+    // two references exposes a way to unload a gallery from a device, but Meural's own Postman
+    // API documentation (documenter.getpostman.com/view/1657302/RVnWjKUL) does - see
+    // RemoveGalleryFromDeviceAsync below.
     public async Task<DeleteOutcome> AddGalleryToDeviceAsync(long deviceId, long galleryId, CancellationToken ct = default)
     {
         await EnsureFreshTokenAsync(ct);
         using var response = await _http.PostAsync($"{ApiBaseUrl}devices/{deviceId}/galleries/{galleryId}", content: null, ct);
+        return new DeleteOutcome(response.IsSuccessStatusCode, response.StatusCode);
+    }
+
+    // Unloads (removes) a gallery from a device - the DELETE counterpart to
+    // AddGalleryToDeviceAsync's POST, confirmed via Meural's own Postman API documentation
+    // (documenter.getpostman.com/view/1657302/RVnWjKUL, "Remove a gallery from the specified
+    // device"), since neither davemorin/meural-manager nor ha-meural expose this one.
+    public async Task<DeleteOutcome> RemoveGalleryFromDeviceAsync(long deviceId, long galleryId, CancellationToken ct = default)
+    {
+        await EnsureFreshTokenAsync(ct);
+        using var response = await _http.DeleteAsync($"{ApiBaseUrl}devices/{deviceId}/galleries/{galleryId}", ct);
         return new DeleteOutcome(response.IsSuccessStatusCode, response.StatusCode);
     }
 

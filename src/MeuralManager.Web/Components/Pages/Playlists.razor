@@ -40,13 +40,33 @@ else
                 @if (_frameMenuOpen)
                 {
                     <div class="dropdown-menu">
-                        @if (Frames.Count == 0)
+                        @if (FramesWithoutSelectedPlaylist.Count == 0)
                         {
-                            <span class="dropdown-item disabled">No frames found</span>
+                            <span class="dropdown-item disabled">@(Frames.Count == 0 ? "No frames found" : "Already on every frame")</span>
                         }
-                        @foreach (var frame in Frames)
+                        @foreach (var frame in FramesWithoutSelectedPlaylist)
                         {
                             <button type="button" class="dropdown-item" @onclick="() => InstallOnFrameAsync(frame)">
+                                @(frame.Alias ?? $"Frame {frame.Id}")
+                            </button>
+                        }
+                    </div>
+                }
+            </div>
+            <div class="dropdown">
+                <button type="button" class="btn btn-secondary btn-sm" @onclick="ToggleRemoveFrameMenu" disabled="@_busy">
+                    Remove from frame ▾
+                </button>
+                @if (_removeFrameMenuOpen)
+                {
+                    <div class="dropdown-menu">
+                        @if (FramesWithSelectedPlaylist.Count == 0)
+                        {
+                            <span class="dropdown-item disabled">Not on any frame</span>
+                        }
+                        @foreach (var frame in FramesWithSelectedPlaylist)
+                        {
+                            <button type="button" class="dropdown-item" @onclick="() => RemoveFromFrameAsync(frame)">
                                 @(frame.Alias ?? $"Frame {frame.Id}")
                             </button>
                         }
@@ -341,6 +361,7 @@ else
     private bool _loadingItems;
     private bool _busy;
     private bool _frameMenuOpen;
+    private bool _removeFrameMenuOpen;
     private bool _showActivityLog;
     private long? _suggestingItemId;
     private AiProvider? _suggestingProvider;
@@ -367,6 +388,22 @@ else
     private MeuralApiClient Client => Session.Client!;
     private List<MeuralGallery> AllPlaylists => Session.AllGalleriesCache ?? [];
     private List<MeuralDevice> Frames => Session.AllDevicesCache ?? [];
+
+    // Only frames the selected playlist isn't already loaded on - installing it again on a frame
+    // that already has it is a no-op at best, so there's no reason to offer that choice.
+    private List<MeuralDevice> FramesWithoutSelectedPlaylist =>
+        _selectedPlaylist?.Id is not long galleryId ? Frames : Frames.Where(f => !IsOnFrame(f, galleryId)).ToList();
+
+    // Only frames the selected playlist IS currently loaded on - the only ones it can be removed
+    // from.
+    private List<MeuralDevice> FramesWithSelectedPlaylist =>
+        _selectedPlaylist?.Id is not long galleryId ? [] : Frames.Where(f => IsOnFrame(f, galleryId)).ToList();
+
+    private bool IsOnFrame(MeuralDevice frame, long galleryId) =>
+        frame.Id is long deviceId
+        && Session.DeviceGalleriesCache is { } cache
+        && cache.TryGetValue(deviceId, out var galleries)
+        && galleries.Any(g => g.Id == galleryId);
     private List<MeuralItem[]> ItemRows => _selectedItems.Chunk(ItemGridColumns).ToList();
     private bool AllItemsSelected => _selectedItems.Count > 0 && _selectedItems.All(i => i.Id is long id && _selectedItemIds.Contains(id));
     private bool AnyGenericNamedItems => _selectedItems.Any(i => FileNaming.LooksGeneric(i.Name));
@@ -466,6 +503,7 @@ else
         _selectedItemIds.Clear();
         _previewItem = null;
         _frameMenuOpen = false;
+        _removeFrameMenuOpen = false;
         if (gallery.Id is not long galleryId)
             return;
         await ReloadSelectedItemsAsync(galleryId, cts.Token);
@@ -1025,7 +1063,66 @@ else
         }
     }
 
-    private void ToggleFrameMenu() => _frameMenuOpen = !_frameMenuOpen;
+    private async Task RemoveFromFrameAsync(MeuralDevice frame)
+    {
+        _removeFrameMenuOpen = false;
+        if (_selectedPlaylist is not { Id: long galleryId } playlist || frame.Id is not long deviceId)
+            return;
+
+        _busy = true;
+        var cts = _cts = new CancellationTokenSource();
+        try
+        {
+            var outcome = await Client.RemoveGalleryFromDeviceAsync(deviceId, galleryId, cts.Token);
+            var frameLabel = frame.Alias ?? $"Frame {deviceId}";
+            _log.Append(outcome.Success
+                ? $"Removed \"{playlist.Name}\" from \"{frameLabel}\"."
+                : $"Couldn't remove from \"{frameLabel}\" (server said: {outcome.StatusCode}).");
+
+            if (outcome.Success)
+            {
+                await Session.RemoveDeviceGalleryAsync(deviceId, galleryId);
+                // Belt-and-braces: the cache patch above should already be picked up by the
+                // automatic re-render after this handler returns, but force it explicitly too
+                // so the Frames column is never left showing stale data.
+                StateHasChanged();
+                // Fixed-position and always visible regardless of scroll position, unlike the
+                // Frames column update above which might be off-screen.
+                _toast.ShowSuccess($"Removed \"{playlist.Name}\" from \"{frameLabel}\".");
+            }
+            else
+            {
+                _toast.ShowError($"Couldn't remove from \"{frameLabel}\" (server said: {outcome.StatusCode}).");
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            HandleCancellation(cts, "Removing from frame");
+        }
+        catch (Exception ex)
+        {
+            _log.Append($"Couldn't remove playlist from frame: {ex.Message}");
+            _toast.ShowError($"Couldn't remove playlist from frame: {ex.Message}");
+        }
+        finally
+        {
+            _cts?.Dispose();
+            _cts = null;
+            _busy = false;
+        }
+    }
+
+    private void ToggleFrameMenu()
+    {
+        _frameMenuOpen = !_frameMenuOpen;
+        _removeFrameMenuOpen = false;
+    }
+
+    private void ToggleRemoveFrameMenu()
+    {
+        _removeFrameMenuOpen = !_removeFrameMenuOpen;
+        _frameMenuOpen = false;
+    }
 
     private void ToggleItemSelection(long id, bool isChecked)
     {
