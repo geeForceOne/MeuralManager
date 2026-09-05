@@ -269,6 +269,18 @@ public sealed class PlaylistCacheStore
         await cmd.ExecuteNonQueryAsync(ct);
     }
 
+    // Records that a gallery was just unloaded from a device, after a
+    // confirmed-successful RemoveGalleryFromDeviceAsync API call.
+    public async Task RemoveDeviceGalleryAsync(long deviceId, long galleryId, CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM DeviceGalleries WHERE DeviceId = @deviceId AND GalleryId = @galleryId";
+        cmd.Parameters.AddWithValue("@deviceId", deviceId);
+        cmd.Parameters.AddWithValue("@galleryId", galleryId);
+        await cmd.ExecuteNonQueryAsync(ct);
+    }
+
     // Re-fetches everything from the API and replaces the entire local
     // cache. Slow (it's exactly the full account scan the cache exists to
     // avoid) - meant to be triggered explicitly via a "Refresh Cache"
