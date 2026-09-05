@@ -95,7 +95,7 @@
     // for installing a new one onto it.
     private List<MeuralGallery> DeviceGalleries =>
         SelectedDevice?.Id is long deviceId && Session.DeviceGalleriesCache is { } cache && cache.TryGetValue(deviceId, out var galleries)
-            ? galleries
+            ? galleries.OrderBy(g => g.Name, StringComparer.OrdinalIgnoreCase).ToList()
             : [];
     private bool IsReachable => _reachable;
     private bool CanOperate => !_busy && SelectedDevice?.LocalIp is { Length: > 0 };
@@ -103,7 +103,13 @@
     protected override void OnInitialized()
     {
         _lastKnownDeviceId = DeviceId;
+        // The playlist dropdown reads DeviceGalleries live off Session.DeviceGalleriesCache, but
+        // only re-renders when told to - this picks up an install/remove made elsewhere (e.g. the
+        // Playlists page) immediately instead of waiting for the next poll tick.
+        Session.Changed += HandleSessionChanged;
     }
+
+    private void HandleSessionChanged() => InvokeAsync(StateHasChanged);
 
     protected override async Task OnParametersSetAsync()
     {
@@ -212,6 +218,7 @@
 
     public void Dispose()
     {
+        Session.Changed -= HandleSessionChanged;
         _pollCts?.Cancel();
         _pollCts?.Dispose();
     }

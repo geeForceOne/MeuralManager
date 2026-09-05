@@ -15,7 +15,7 @@ management.
 
 ![Playlists](docs/images/mm-playlist.png)
 
-- Create, rename, and delete playlists; install one onto a Canvas frame
+- Create, rename, and delete playlists; install one onto a Canvas frame, or remove one from a frame
 - Add existing uploads or new local images to a playlist, or remove images from one
 - Crop an image to 16:9 or 9:16 non-destructively — a Revert to original button restores it later
 - Get an AI-suggested name for an image (Claude or ChatGPT)

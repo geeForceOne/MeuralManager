@@ -376,6 +376,22 @@ public sealed class MeuralSessionState(IHostEnvironment env, ImageCacheManager i
 
         if (_cacheStore is not null && gallery.Id is long galleryId)
             await _cacheStore.AddDeviceGalleryAsync(deviceId, galleryId, CancellationToken.None);
+
+        // Lets the frame remote control toolbar (a different component, on a different page)
+        // pick this up immediately instead of only on its next poll tick - it reads
+        // DeviceGalleriesCache live, but only re-renders when something tells it to.
+        Changed?.Invoke();
+    }
+
+    public async Task RemoveDeviceGalleryAsync(long deviceId, long galleryId)
+    {
+        if (DeviceGalleriesCache is not null && DeviceGalleriesCache.TryGetValue(deviceId, out var list))
+            list.RemoveAll(g => g.Id == galleryId);
+
+        if (_cacheStore is not null)
+            await _cacheStore.RemoveDeviceGalleryAsync(deviceId, galleryId, CancellationToken.None);
+
+        Changed?.Invoke();
     }
 
     // Whether itemId has a locally-stored pre-crop original it can be reverted to - used by the
