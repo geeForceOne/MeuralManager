@@ -1,38 +1,57 @@
 @if (_visible)
 {
-    <div class="modal-backdrop" @onclick="() => Resolve(false)">
+    <div class="modal-backdrop" @onclick="() => Resolve(ConfirmChoice.Cancel)">
         <div class="modal-card" @onclick:stopPropagation="true">
             <h3>@_title</h3>
             <p>@_message</p>
             <div class="modal-actions">
-                <button class="btn btn-ghost" @onclick="() => Resolve(false)">Cancel</button>
-                <button class="btn btn-danger" @onclick="() => Resolve(true)">@_confirmLabel</button>
+                <button class="btn btn-ghost" @onclick="() => Resolve(ConfirmChoice.Cancel)">Cancel</button>
+                @if (_secondaryLabel is not null)
+                {
+                    <button class="btn btn-secondary" @onclick="() => Resolve(ConfirmChoice.Secondary)">@_secondaryLabel</button>
+                }
+                <button class="@(_primaryIsDanger ? "btn btn-danger" : "btn btn-primary")" @onclick="() => Resolve(ConfirmChoice.Primary)">@_confirmLabel</button>
             </div>
         </div>
     </div>
 }
 
 @code {
+    public enum ConfirmChoice { Cancel, Primary, Secondary }
+
     private bool _visible;
     private string _title = "";
     private string _message = "";
     private string _confirmLabel = "Delete";
-    private TaskCompletionSource<bool>? _tcs;
+    private string? _secondaryLabel;
+    private bool _primaryIsDanger = true;
+    private TaskCompletionSource<ConfirmChoice>? _tcs;
 
     // Shows the modal and completes once the user picks an option - callers `await` this
     // directly instead of wiring up a callback, e.g. `if (await _confirm.AskAsync(...))`.
-    public Task<bool> AskAsync(string title, string message, string confirmLabel = "Delete")
+    public async Task<bool> AskAsync(string title, string message, string confirmLabel = "Delete") =>
+        await ShowAsync(title, message, confirmLabel, secondaryLabel: null, primaryIsDanger: true) == ConfirmChoice.Primary;
+
+    // For a question with two acceptable answers besides backing out (e.g. "skip these" vs.
+    // "upload them anyway"), so Cancel can keep meaning "never mind, don't do anything". The
+    // primary button isn't danger-styled here since neither answer is destructive.
+    public Task<ConfirmChoice> AskChoiceAsync(string title, string message, string primaryLabel, string secondaryLabel) =>
+        ShowAsync(title, message, primaryLabel, secondaryLabel, primaryIsDanger: false);
+
+    private Task<ConfirmChoice> ShowAsync(string title, string message, string confirmLabel, string? secondaryLabel, bool primaryIsDanger)
     {
         _title = title;
         _message = message;
         _confirmLabel = confirmLabel;
+        _secondaryLabel = secondaryLabel;
+        _primaryIsDanger = primaryIsDanger;
         _visible = true;
-        _tcs = new TaskCompletionSource<bool>();
+        _tcs = new TaskCompletionSource<ConfirmChoice>();
         StateHasChanged();
         return _tcs.Task;
     }
 
-    private void Resolve(bool result)
+    private void Resolve(ConfirmChoice result)
     {
         _visible = false;
         var tcs = _tcs;

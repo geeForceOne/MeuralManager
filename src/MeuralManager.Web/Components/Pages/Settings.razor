@@ -72,6 +72,72 @@
 </div>
 
 <div class="settings-group">
+    <h2>Immich</h2>
+    <div class="setting-row">
+        <div>
+            <div class="setting-label">Immich integration</div>
+            <div class="muted setting-description">
+                Browse your <a href="https://immich.app" target="_blank" rel="noopener">Immich</a> photo
+                library (by date, album, or person) and upload photos straight into a Meural playlist.
+                Leave this off if you don't use Immich - it hides the Immich page entirely.
+            </div>
+        </div>
+        <label class="switch">
+            <input type="checkbox" checked="@_immichEnabled" @onchange="OnImmichToggleChanged" />
+            <span class="switch-slider"></span>
+        </label>
+    </div>
+
+    @if (_immichEnabled)
+    {
+        <label class="field">
+            <span>Server URL</span>
+            <input class="text-input" autocomplete="off" @bind="_immichUrl" @bind:event="oninput" placeholder="http://192.168.1.10:2283" />
+        </label>
+
+        <label class="field">
+            <span>API key</span>
+            <input class="text-input" type="password" autocomplete="off" @bind="_immichKey" @bind:event="oninput" />
+        </label>
+
+        <p class="muted setting-description">
+            Create the key in Immich under <em>Account Settings → API Keys</em>, and enable these
+            permissions on it. They're all read-only - this app never changes anything in Immich:
+        </p>
+        <ul class="muted setting-description immich-permissions">
+            <li><code>asset.read</code> - browse and search your photos</li>
+            <li><code>asset.view</code> - show thumbnails and previews</li>
+            <li><code>asset.download</code> - fetch the full photo to upload it to Meural</li>
+            <li><code>album.read</code> - list your albums</li>
+            <li><code>person.read</code> - list people and their face pictures</li>
+            <li><code>user.read</code> - used by "Test connection" to confirm the key works</li>
+        </ul>
+        <p class="muted setting-description">
+            The server needs to be reachable from the machine running this app (not just from your
+            browser). The key stays on this server - your browser never sees it.
+        </p>
+
+        <div class="immich-settings-actions">
+            <button type="button" class="btn btn-primary" @onclick="SaveImmichSettingsAsync" disabled="@(_savingImmich || _testingImmich)">
+                @(_savingImmich ? "Saving…" : "Save")
+            </button>
+            <button type="button" class="btn btn-secondary" @onclick="TestImmichConnectionAsync"
+                    disabled="@(_savingImmich || _testingImmich || string.IsNullOrWhiteSpace(_immichUrl) || string.IsNullOrWhiteSpace(_immichKey))">
+                @(_testingImmich ? "Testing…" : "Test connection")
+            </button>
+            <button type="button" class="btn btn-ghost" @onclick="ClearImmichSettingsAsync" disabled="@(_savingImmich || _testingImmich)">
+                Clear saved settings
+            </button>
+        </div>
+
+        @if (_immichStatus is not null)
+        {
+            <p class="@(_immichStatusIsError ? "immich-error" : "muted")">@_immichStatus</p>
+        }
+    }
+</div>
+
+<div class="settings-group">
     <h2>AI Naming</h2>
     <p class="muted setting-description">
         On the Playlists page, get an AI-suggested name for an image (handy for uploads with a generic
@@ -139,6 +205,14 @@
     private bool _cropFeatureEnabled = true;
     private bool _remoteControlEnabled = true;
 
+    private bool _immichEnabled;
+    private string _immichUrl = "";
+    private string _immichKey = "";
+    private bool _savingImmich;
+    private bool _testingImmich;
+    private string? _immichStatus;
+    private bool _immichStatusIsError;
+
     private AiProvider _provider = AiProvider.Claude;
     private RenameStyle _renameStyle = RenameStyle.Professional;
     private string _claudeApiKey = "";
@@ -158,6 +232,11 @@
         _showPictureOfTheMoment = prefs.ShowPictureOfTheMoment;
         _cropFeatureEnabled = prefs.CropFeatureEnabled;
         _remoteControlEnabled = prefs.RemoteControlEnabled;
+        _immichEnabled = prefs.ImmichEnabled;
+
+        var immichSettings = await Session.LoadImmichSettingsAsync();
+        _immichUrl = immichSettings.ServerUrl ?? "";
+        _immichKey = immichSettings.ApiKey ?? "";
 
         var aiSettings = await Session.LoadAiSettingsAsync();
         _provider = aiSettings.Provider;
@@ -196,6 +275,70 @@
         // OnToggleChanged above.
         var prefs = await Preferences.LoadAsync();
         await Preferences.SaveAsync(prefs with { RemoteControlEnabled = _remoteControlEnabled });
+    }
+
+    private async Task OnImmichToggleChanged(ChangeEventArgs e)
+    {
+        _immichEnabled = (bool)e.Value!;
+        _immichStatus = null;
+        // Loads-then-patches so this doesn't clobber other preferences saved elsewhere - see
+        // OnToggleChanged above.
+        var prefs = await Preferences.LoadAsync();
+        await Preferences.SaveAsync(prefs with { ImmichEnabled = _immichEnabled });
+
+        // Switching it off stops the thumbnail proxy serving this account's Immich right away;
+        // the saved URL and key are kept so switching it back on doesn't mean re-entering them.
+        if (!_immichEnabled)
+            Session.ReleaseImmichClient();
+    }
+
+    private async Task SaveImmichSettingsAsync()
+    {
+        _savingImmich = true;
+        _immichStatus = null;
+        try
+        {
+            await Session.SaveImmichSettingsAsync(new ImmichSettings { ServerUrl = _immichUrl, ApiKey = _immichKey });
+            _immichStatus = "Saved.";
+            _immichStatusIsError = false;
+        }
+        finally
+        {
+            _savingImmich = false;
+        }
+    }
+
+    // Tests what's currently typed in the form, saved or not, so a bad URL or key can be fixed
+    // before it's persisted.
+    private async Task TestImmichConnectionAsync()
+    {
+        _testingImmich = true;
+        _immichStatus = null;
+        try
+        {
+            using var client = new ImmichApiClient(_immichUrl, _immichKey);
+            var who = await client.TestConnectionAsync();
+            _immichStatus = $"Connected to Immich as {who}.";
+            _immichStatusIsError = false;
+        }
+        catch (Exception ex)
+        {
+            _immichStatus = ex is UriFormatException ? "That doesn't look like a valid server URL." : ex.Message;
+            _immichStatusIsError = true;
+        }
+        finally
+        {
+            _testingImmich = false;
+        }
+    }
+
+    private async Task ClearImmichSettingsAsync()
+    {
+        await Session.SaveImmichSettingsAsync(new ImmichSettings());
+        _immichUrl = "";
+        _immichKey = "";
+        _immichStatus = "Cleared.";
+        _immichStatusIsError = false;
     }
 
     private async Task SaveAiSettingsAsync()

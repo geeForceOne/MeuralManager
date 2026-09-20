@@ -1,0 +1,142 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+@if (Photos.Count == 0 && !Loading)
+{
+    <p class="empty-state">No photos found.</p>
+}
+
+@if (Grouped)
+{
+    @foreach (var day in Days)
+    {
+        var allSelected = day.Photos.All(a => Selected.Contains(a.Id));
+        <section class="photo-day" @key="day.Date">
+            <label class="photo-day-header">
+                <input type="checkbox" checked="@allSelected" @onchange="e => OnToggleDay.InvokeAsync((day.Date, (bool)e.Value!))" />
+                <span class="photo-day-title">@DayLabel(day.Date)</span>
+                <span class="muted">@day.Photos.Count</span>
+            </label>
+            <div class="photo-grid">
+                @foreach (var asset in day.Photos)
+                {
+                    @Tile(asset)
+                }
+            </div>
+        </section>
+    }
+}
+else
+{
+    <div class="photo-grid">
+        @foreach (var asset in Photos)
+        {
+            @Tile(asset)
+        }
+    </div>
+}
+
+@if (Loading)
+{
+    <div class="photo-loading"><span class="spinner spinner-inline"></span> Loading photos…</div>
+}
+
+@if (HasMore && !Loading)
+{
+    <div class="photo-load-more" @ref="_sentinel">
+        <button type="button" class="btn btn-ghost btn-sm" @onclick="() => OnLoadMore.InvokeAsync()">Load more</button>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<ImmichAsset> Photos { get; set; } = [];
+    [Parameter, EditorRequired] public string ProxyToken { get; set; } = "";
+    [Parameter] public HashSet<string> Selected { get; set; } = [];
+    // Photos already sent to Meural through this app - shown with a badge.
+    [Parameter] public HashSet<string> Uploaded { get; set; } = [];
+    // Day headings only make sense when Photos is in date order - a free-text search returns them
+    // by relevance instead, so it's shown as one flat grid.
+    [Parameter] public bool Grouped { get; set; } = true;
+    [Parameter] public bool HasMore { get; set; }
+    [Parameter] public bool Loading { get; set; }
+
+    [Parameter] public EventCallback<(ImmichAsset Asset, bool Shift)> OnToggle { get; set; }
+    [Parameter] public EventCallback<(DateTime Day, bool Select)> OnToggleDay { get; set; }
+    [Parameter] public EventCallback OnLoadMore { get; set; }
+
+    private sealed record Day(DateTime Date, List<ImmichAsset> Photos);
+
+    private ElementReference _sentinel;
+    private DotNetObjectReference<ImmichPhotoGrid>? _self;
+
+    // Photos arrive newest-first, so grouping by first appearance keeps days in order.
+    private IEnumerable<Day> Days => Photos
+        .GroupBy(a => a.TakenDate)
+        .Select(g => new Day(g.Key, g.ToList()));
+
+    private string ThumbUrl(ImmichAsset asset) => $"immich-proxy/{ProxyToken}/asset/{asset.Id}/thumbnail";
+
+    private RenderFragment Tile(ImmichAsset asset) => __builder =>
+    {
+        var selected = Selected.Contains(asset.Id);
+        <div class="photo-tile @(selected ? "selected" : "")" @key="asset.Id" title="@asset.OriginalFileName"
+             @onclick="e => OnToggle.InvokeAsync((asset, e.ShiftKey))">
+            <img src="@ThumbUrl(asset)" loading="lazy" alt="" draggable="false" />
+            <span class="photo-check" aria-hidden="true">@(selected ? "✓" : "")</span>
+            @if (Uploaded.Contains(asset.Id))
+            {
+                <span class="photo-badge" title="Already uploaded to Meural from here">On Meural</span>
+            }
+        </div>
+    };
+
+    private static string DayLabel(DateTime day)
+    {
+        if (day == DateTime.MinValue)
+            return "Unknown date";
+        if (day == DateTime.Today)
+            return "Today";
+        if (day == DateTime.Today.AddDays(-1))
+            return "Yesterday";
+        return day.Year == DateTime.Today.Year ? day.ToString("ddd, MMM d") : day.ToString("ddd, MMM d, yyyy");
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Re-armed on every render that still has more to load - see infinite-scroll.js for why
+        // that's needed rather than a one-time observe.
+        if (!HasMore || Loading)
+            return;
+
+        _self ??= DotNetObjectReference.Create(this);
+        try
+        {
+            await JS.InvokeVoidAsync("meuralInfiniteScroll.watch", _sentinel, _self);
+        }
+        catch (JSDisconnectedException)
+        {
+            // Circuit already gone.
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnSentinelVisible()
+    {
+        if (HasMore && !Loading)
+            await OnLoadMore.InvokeAsync();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("meuralInfiniteScroll.stop", _sentinel);
+        }
+        catch (Exception ex) when (ex is JSDisconnectedException or InvalidOperationException or JSException)
+        {
+            // Nothing left to stop - the element or the circuit is already gone.
+        }
+
+        _self?.Dispose();
+    }
+}
