@@ -22,7 +22,8 @@ namespace MeuralManager.Web.Services;
 // manager uses, one file per signed-in email under CACHE_ROOT_PATH - so a returning visit from
 // the same account loads instantly from disk instead of needing a fresh scan, and the scan
 // survives a container restart the way the in-memory-only version didn't.
-public sealed class MeuralSessionState(IHostEnvironment env, ImageCacheManager imageCache, IDataProtectionProvider dataProtection) : IDisposable
+public sealed class MeuralSessionState(
+    IHostEnvironment env, ImageCacheManager imageCache, IDataProtectionProvider dataProtection, ImmichProxyRegistry immichProxy) : IDisposable
 {
     private readonly string _cacheRoot = Environment.GetEnvironmentVariable("CACHE_ROOT_PATH")
         ?? Path.Combine(env.ContentRootPath, "cache");
@@ -102,6 +103,9 @@ public sealed class MeuralSessionState(IHostEnvironment env, ImageCacheManager i
         // cache and dispose its independent client.
         if (Email is not null)
             imageCache.UnregisterAndDispose(Email);
+
+        ReleaseImmichClient();
+        ImmichProxyToken = null;
 
         Client?.Dispose();
         Client = null;
@@ -496,6 +500,93 @@ public sealed class MeuralSessionState(IHostEnvironment env, ImageCacheManager i
         await _cacheStore.SetSettingAsync("AiClaudeModel", settings.ClaudeModel, CancellationToken.None);
         await _cacheStore.SetSettingAsync("AiOpenAiApiKey", Protect(settings.OpenAiApiKey), CancellationToken.None);
         await _cacheStore.SetSettingAsync("AiOpenAiModel", settings.OpenAiModel, CancellationToken.None);
+    }
+
+    // Immich connection (server URL + API key) - per-account like AiSettings above, with the key
+    // Data-Protection-encrypted before it reaches the DB. Whether the integration is switched on
+    // at all is a separate per-browser preference (UserPreferencesStore.ImmichEnabled), so
+    // turning it off doesn't throw these away.
+    public async Task<ImmichSettings> LoadImmichSettingsAsync()
+    {
+        if (_cacheStore is null)
+            return new ImmichSettings();
+
+        return new ImmichSettings
+        {
+            ServerUrl = await _cacheStore.GetSettingAsync("ImmichServerUrl", CancellationToken.None),
+            ApiKey = TryUnprotect(await _cacheStore.GetSettingAsync("ImmichApiKey", CancellationToken.None)),
+        };
+    }
+
+    public async Task SaveImmichSettingsAsync(ImmichSettings settings)
+    {
+        if (_cacheStore is null)
+            return;
+
+        await _cacheStore.SetSettingAsync("ImmichServerUrl", string.IsNullOrWhiteSpace(settings.ServerUrl) ? null : settings.ServerUrl.Trim(), CancellationToken.None);
+        await _cacheStore.SetSettingAsync("ImmichApiKey", Protect(settings.ApiKey?.Trim()), CancellationToken.None);
+
+        // Whatever the thumbnail proxy was holding is now stale (or, if the settings were just
+        // cleared, shouldn't be holding a key at all) - it's re-registered on next use.
+        ReleaseImmichClient();
+    }
+
+    // Path segment for this account's /immich-proxy/... URLs - see ImmichProxyRegistry. Random,
+    // generated once and then kept so thumbnail URLs stay the same across visits and the
+    // browser's cache keeps working.
+    public string? ImmichProxyToken { get; private set; }
+
+    // The shared client for this account's Immich server, registered with the thumbnail proxy so
+    // <img> tags can be served through it. Null if Immich isn't configured yet.
+    public async Task<ImmichApiClient?> GetImmichClientAsync()
+    {
+        var settings = await LoadImmichSettingsAsync();
+        if (!settings.IsConfigured || _cacheStore is null)
+            return null;
+
+        if (ImmichProxyToken is null)
+        {
+            ImmichProxyToken = await _cacheStore.GetSettingAsync("ImmichProxyToken", CancellationToken.None);
+            if (ImmichProxyToken is null)
+            {
+                ImmichProxyToken = Guid.NewGuid().ToString("N");
+                await _cacheStore.SetSettingAsync("ImmichProxyToken", ImmichProxyToken, CancellationToken.None);
+            }
+        }
+
+        return immichProxy.Register(ImmichProxyToken, settings);
+    }
+
+    // Stops the thumbnail proxy serving this account's Immich - called when the integration is
+    // switched off or its settings change, and on sign-out.
+    public void ReleaseImmichClient()
+    {
+        if (ImmichProxyToken is not null)
+            immichProxy.Unregister(ImmichProxyToken);
+    }
+
+    // Immich photos already sent to Meural through this app, so the grid can flag them and a
+    // photo doesn't get uploaded twice by accident. Newline-separated in one settings row - Immich
+    // ids are GUIDs, so there's no escaping to worry about, and even tens of thousands is ~1 MB.
+    public async Task<HashSet<string>> LoadImmichUploadedAssetIdsAsync()
+    {
+        if (_cacheStore is null)
+            return [];
+
+        var raw = await _cacheStore.GetSettingAsync("ImmichUploadedAssetIds", CancellationToken.None);
+        return string.IsNullOrEmpty(raw)
+            ? []
+            : raw.Split('\n', StringSplitOptions.RemoveEmptyEntries).ToHashSet();
+    }
+
+    public async Task AddImmichUploadedAssetIdsAsync(IEnumerable<string> assetIds)
+    {
+        if (_cacheStore is null)
+            return;
+
+        var all = await LoadImmichUploadedAssetIdsAsync();
+        all.UnionWith(assetIds);
+        await _cacheStore.SetSettingAsync("ImmichUploadedAssetIds", string.Join('\n', all), CancellationToken.None);
     }
 
     // The frame remote control toolbar's instances (one device id per toolbar, in order - the

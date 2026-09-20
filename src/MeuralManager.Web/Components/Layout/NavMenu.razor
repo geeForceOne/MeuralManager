@@ -21,6 +21,13 @@
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3.5" y="3.5" width="8" height="8" rx="1.5"/><rect x="12.5" y="3.5" width="8" height="8" rx="1.5"/><rect x="3.5" y="12.5" width="8" height="8" rx="1.5"/><rect x="12.5" y="12.5" width="8" height="8" rx="1.5"/></svg>
             <span>All Pictures</span>
         </NavLink>
+        @if (ImmichEnabled)
+        {
+            <NavLink href="/immich" class="nav-link">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3.5" y="5" width="17" height="14" rx="2"/><circle cx="9" cy="10.5" r="1.6"/><path d="m4.5 17 4.2-4.2a1.5 1.5 0 0 1 2.1 0L14 16l2-2a1.5 1.5 0 0 1 2.1 0l1.9 2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span>Immich</span>
+            </NavLink>
+        }
         <NavLink href="/orphan-uploads" class="nav-link">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="m4 16 4.5-4.5a1.5 1.5 0 0 1 2.1 0L15 16" stroke-linecap="round" stroke-linejoin="round"/><path d="m13 14 1.9-1.9a1.5 1.5 0 0 1 2.1 0L20 15" stroke-linecap="round" stroke-linejoin="round"/></svg>
             <span>Orphan Uploads</span>
@@ -60,6 +67,8 @@
 @code {
     [Parameter] public string? Email { get; set; }
     [Parameter] public EventCallback OnSignOut { get; set; }
+    // Hidden entirely unless switched on in Settings - most people don't run Immich.
+    [Parameter] public bool ImmichEnabled { get; set; }
 
     private string Initial => string.IsNullOrEmpty(Email) ? "?" : Email[..1].ToUpperInvariant();
     private ImageCacheProgress? _progress;

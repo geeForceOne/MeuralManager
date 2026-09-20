@@ -54,6 +54,12 @@ through Meural's cloud, so it needs:
   works out of the box (outbound LAN access isn't blocked by container networking), but a more
   locked-down network setup might need adjusting.
 
+## Immich (optional)
+
+If you run [Immich](https://immich.app) for your photos, this app can browse it and upload photos
+straight into a Meural playlist. It's off by default — turn it on in Settings, then enter your
+server URL and an API key.
+
 ## With Docker
 
 Using docker compose:
