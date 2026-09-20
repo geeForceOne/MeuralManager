@@ -25,6 +25,7 @@ builder.Services.AddScoped<MeuralSessionState>();
 builder.Services.AddSingleton<BackupArchiveService>();
 builder.Services.AddSingleton<StaticAssetVersion>();
 builder.Services.AddSingleton<ImageCacheManager>();
+builder.Services.AddSingleton<ImmichProxyRegistry>();
 builder.Services.AddHostedService<BackupCleanupService>();
 
 var app = builder.Build();
@@ -60,6 +61,7 @@ app.UseAntiforgery();
 
 app.MapBackupEndpoints();
 app.MapImageCacheEndpoints();
+app.MapImmichEndpoints();
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();

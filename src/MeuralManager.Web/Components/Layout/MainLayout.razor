@@ -18,7 +18,7 @@ else if (!Session.IsAuthenticated)
 else
 {
     <div class="app-shell">
-        <NavMenu Email="@Session.Email" OnSignOut="SignOutAsync" />
+        <NavMenu Email="@Session.Email" OnSignOut="SignOutAsync" ImmichEnabled="_immichEnabled" />
         <div class="app-main-wrap">
             <main class="app-main">
                 <ErrorBoundary @ref="_errorBoundary">
@@ -66,6 +66,7 @@ else
 @code {
     private bool _checkingSession = true;
     private bool _remoteControlEnabled = true;
+    private bool _immichEnabled;
     private ErrorBoundary? _errorBoundary;
 
     private void RecoverFromError() => _errorBoundary?.Recover();
@@ -83,7 +84,9 @@ else
 
         try
         {
-            _remoteControlEnabled = (await Preferences.LoadAsync()).RemoteControlEnabled;
+            var prefs = await Preferences.LoadAsync();
+            _remoteControlEnabled = prefs.RemoteControlEnabled;
+            _immichEnabled = prefs.ImmichEnabled;
 
             var saved = await SessionStore.LoadAsync();
             if (saved is null)
@@ -113,7 +116,9 @@ else
 
     private void HandlePreferencesChanged() => InvokeAsync(async () =>
     {
-        _remoteControlEnabled = (await Preferences.LoadAsync()).RemoteControlEnabled;
+        var prefs = await Preferences.LoadAsync();
+        _remoteControlEnabled = prefs.RemoteControlEnabled;
+        _immichEnabled = prefs.ImmichEnabled;
         StateHasChanged();
     });
 

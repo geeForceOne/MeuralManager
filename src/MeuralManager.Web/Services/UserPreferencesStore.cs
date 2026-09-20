@@ -17,7 +17,10 @@ public sealed class UserPreferencesStore(ProtectedLocalStorage storage)
         double? PlaylistListPaneWidth = null,
         double? PreviewPaneWidth = null,
         bool CropFeatureEnabled = true,
-        bool RemoteControlEnabled = true);
+        bool RemoteControlEnabled = true,
+        // Off by default (unlike the other feature toggles): most people running this don't have
+        // an Immich server, so the nav entry and settings stay out of their way until they opt in.
+        bool ImmichEnabled = false);
 
     // Fired after a successful save so MainLayout (which stays mounted for the whole circuit,
     // unlike a page) can pick up a toggle - e.g. the remote control toolbar - flipped on the
