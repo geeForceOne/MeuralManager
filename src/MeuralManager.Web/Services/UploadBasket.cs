@@ -4,7 +4,7 @@ using MeuralManager.Web.Components.Shared;
 
 namespace MeuralManager.Web.Services;
 
-// One photo waiting in an upload basket, whatever it came from (Immich today, Google Photos next).
+// One photo waiting in an upload basket, whatever it came from (Immich today).
 // Source is the page's own photo object, handed back to its prepare/AI-image callbacks.
 public sealed record BasketEntry(string Id, string ThumbUrl, string SourceName, string? Taken, object Source)
 {
@@ -40,7 +40,7 @@ public delegate Task<PreparedUpload?> PrepareUploadAsync(
 
 // Everything about an upload basket that doesn't depend on where the photos come from: what's in
 // it, the names chosen for them, the target playlist, the AI naming, and the upload itself. A page
-// (Immich, Google Photos) owns one, feeds it entries, and supplies the source-specific parts as
+// (Immich today) owns one, feeds it entries, and supplies the source-specific parts as
 // callbacks. UploadBasketPane and UploadPreviewPane render it.
 public sealed class UploadBasket : IDisposable
 {
