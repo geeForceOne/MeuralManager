@@ -84,10 +84,8 @@ else
 
         try
         {
-            var prefs = await Preferences.LoadAsync();
-            _remoteControlEnabled = prefs.RemoteControlEnabled;
-            _immichEnabled = prefs.ImmichEnabled;
-
+            // The feature toggles are per-account (in the account's DB), so they're loaded once
+            // sign-in completes - see HandleSessionChanged - not here, before there's an account.
             var saved = await SessionStore.LoadAsync();
             if (saved is null)
                 return;
@@ -112,15 +110,35 @@ else
         }
     }
 
-    private void HandleSessionChanged() => InvokeAsync(StateHasChanged);
+    // Session.Changed also fires on every scan-progress tick, so the toggles are only (re)loaded on
+    // the signed-out -> signed-in transition rather than on each one.
+    private bool _togglesLoaded;
+
+    private void HandleSessionChanged() => InvokeAsync(async () =>
+    {
+        if (!Session.IsAuthenticated)
+            _togglesLoaded = false;
+        else if (!_togglesLoaded)
+        {
+            _togglesLoaded = true;
+            await LoadTogglesAsync();
+        }
+
+        StateHasChanged();
+    });
 
     private void HandlePreferencesChanged() => InvokeAsync(async () =>
+    {
+        await LoadTogglesAsync();
+        StateHasChanged();
+    });
+
+    private async Task LoadTogglesAsync()
     {
         var prefs = await Preferences.LoadAsync();
         _remoteControlEnabled = prefs.RemoteControlEnabled;
         _immichEnabled = prefs.ImmichEnabled;
-        StateHasChanged();
-    });
+    }
 
     private async Task SignOutAsync()
     {
