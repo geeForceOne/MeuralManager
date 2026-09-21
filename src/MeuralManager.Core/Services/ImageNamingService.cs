@@ -24,6 +24,17 @@ public static class ImageNamingService
 
         progress?.Report("Downloading image...");
         var (bytes, mediaType) = await DownloadImageAsync(imageUrl, ct);
+        return await SuggestNameAsync(settings, bytes, mediaType, playlistName, progress, ct);
+    }
+
+    // Same, for a caller that already holds the image - e.g. a photo behind an authenticated
+    // server (Immich) that a plain unauthenticated URL download can't reach.
+    public static async Task<string> SuggestNameAsync(
+        AiSettings settings, byte[] bytes, string mediaType, string? playlistName, IProgress<string>? progress, CancellationToken ct)
+    {
+        if (!settings.HasKeyFor(settings.Provider))
+            throw new AiNamingException($"No API key configured for {settings.Provider} - add one in Settings.");
+
         var base64 = Convert.ToBase64String(bytes);
         var prompt = BuildPrompt(settings.RenameStyle, playlistName);
 

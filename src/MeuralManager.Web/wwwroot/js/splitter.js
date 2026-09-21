@@ -1,18 +1,29 @@
-// Minimal drag-to-resize for the Playlists page's three-pane layout (list | items | preview).
+// Minimal drag-to-resize for the three-pane layouts on the Playlists page (list | items | preview)
+// and the Immich page (photos | basket | preview).
 // By default each ".split-handle" resizes the pane immediately before it (dragging right grows
 // it). Add data-resize="next" to a handle to have it resize the pane immediately after it
 // instead (dragging left grows it) - used for the right-docked preview pane, so dragging its
 // own left edge changes *its* width rather than the middle item grid's.
 //
-// savedWidths (optional, {list, preview} in px) restores each pane to its last dragged width on
-// init. dotNetRef (optional) gets OnSplitterResized(paneKey, widthPx) invoked once per drag, on
-// mouseup, so Playlists.razor can persist it - not on every mousemove, which would be far too
-// chatty for a JS interop round trip.
+// A handle's pane is identified by paneKey - "list" for a resize-previous handle and "preview" for
+// a resize-next one by default, or whatever data-pane-key says (the Immich page has two
+// resize-next handles, so they name themselves "basket" and "preview").
+//
+// savedWidths (optional, {paneKey: px}) restores each pane to its last dragged width on init.
+// dotNetRef (optional) gets OnSplitterResized(paneKey, widthPx) invoked once per drag, on
+// mouseup, so the page can persist it - not on every mousemove, which would be far too chatty
+// for a JS interop round trip.
+//
+// Returns false if the container isn't in the DOM yet (a page that renders its layout only once
+// it has loaded something can call again after a later render), true once it's set up.
 window.meuralSplitter = {
     init: function (containerId, dotNetRef, savedWidths) {
         const container = document.getElementById(containerId);
-        if (!container || container.dataset.splitterReady === "1") {
-            return;
+        if (!container) {
+            return false;
+        }
+        if (container.dataset.splitterReady === "1") {
+            return true;
         }
         container.dataset.splitterReady = "1";
 
@@ -25,7 +36,7 @@ window.meuralSplitter = {
                 return;
             }
 
-            const paneKey = resizeNext ? "preview" : "list";
+            const paneKey = handle.dataset.paneKey || (resizeNext ? "preview" : "list");
             const savedWidth = savedWidths && savedWidths[paneKey];
             if (savedWidth) {
                 pane.style.flex = "0 0 " + savedWidth + "px";
@@ -66,6 +77,8 @@ window.meuralSplitter = {
                 }
             });
         });
+
+        return true;
     }
 };
 

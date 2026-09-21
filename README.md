@@ -17,7 +17,9 @@ management.
 
 - Create, rename, and delete playlists; install one onto a Canvas frame, or remove one from a frame
 - Add existing uploads or new local images to a playlist, or remove images from one
-- Crop an image to 16:9 or 9:16 non-destructively — a Revert to original button restores it later
+- Crop an image to 16:9 or 9:16 non-destructively — a Revert to original button restores it later.
+  Set each frame's orientation in Settings and the crop tool opens on the right format for the
+  frames a playlist is installed on
 - Get an AI-suggested name for an image (Claude or ChatGPT)
 - Select multiple images and download them as a ZIP
 - Pane sizes are remembered across visits
@@ -56,9 +58,12 @@ through Meural's cloud, so it needs:
 
 ## Immich (optional)
 
-If you run [Immich](https://immich.app) for your photos, this app can browse it and upload photos
-straight into a Meural playlist. It's off by default — turn it on in Settings, then enter your
-server URL and an API key.
+If you run [Immich](https://immich.app) for your photos, this app can browse it (by date, album,
+or person) and upload photos straight into a Meural playlist. It's off by default — turn it on in
+Settings, then enter your server URL and an API key.
+
+Photos you pick go into an upload basket next to a preview pane. Rename them there (AI suggestions
+included), see what's already in the target playlist, and crop on upload.
 
 ## With Docker
 
