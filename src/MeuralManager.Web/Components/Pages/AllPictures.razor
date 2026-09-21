@@ -117,7 +117,10 @@ else
             else
             {
                 <div class="preview-body">
-                    <ItemImage Item="_previewItem" CssClass="preview-image" />
+                    <div class="preview-image-wrap">
+                        <ItemImage Item="_previewItem" CssClass="preview-image" />
+                    </div>
+                    <div class="preview-info">
                     <p class="preview-name">@(_previewItem.Name ?? "(untitled)")</p>
                     @if (!string.IsNullOrWhiteSpace(_previewItem.CreatedAt))
                     {
@@ -129,6 +132,7 @@ else
                             : "—";
                     }
                     <p class="muted preview-meta">Playlists: @previewPlaylists</p>
+                    </div>
                 </div>
             }
         </div>

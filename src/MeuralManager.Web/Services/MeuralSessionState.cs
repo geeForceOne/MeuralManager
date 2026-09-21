@@ -72,6 +72,7 @@ public sealed class MeuralSessionState(
             Path.Combine(_cacheRoot, FileNaming.SanitizeFileName(email), "meural-cache.db"));
 
         await TryHydrateFromCacheAsync();
+        await LoadFrameOrientationsAsync();
 
         // Registers (or reuses) this account's independent background client and kicks off a
         // warmup for whatever items were just hydrated from disk - so a returning visit resumes
@@ -111,6 +112,7 @@ public sealed class MeuralSessionState(
         Client = null;
         Email = null;
         _cacheStore = null;
+        FrameOrientations = [];
         IsScanning = false;
         ScanLog.Clear();
         InvalidateCaches();
@@ -617,6 +619,63 @@ public sealed class MeuralSessionState(
         await _cacheStore.SetSettingAsync("RemoteToolbarDeviceIds", raw, CancellationToken.None);
     }
 
+    // Which way each frame hangs (FrameOrientation) - per-account like the settings above, since a
+    // frame's orientation is a fact about that device, not about the browser. One row, "id:h,id:v",
+    // holding only frames someone has explicitly set; anything missing counts as Vertical.
+    // Held in memory (loaded at sign-in, see SetAuthenticatedAsync) so GetCropSuggestion can be
+    // called synchronously from markup.
+    public Dictionary<long, FrameOrientation> FrameOrientations { get; private set; } = [];
+
+    private async Task LoadFrameOrientationsAsync()
+    {
+        FrameOrientations = [];
+        if (_cacheStore is null)
+            return;
+
+        var raw = await _cacheStore.GetSettingAsync("FrameOrientations", CancellationToken.None);
+        if (string.IsNullOrEmpty(raw))
+            return;
+
+        foreach (var entry in raw.Split(',', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var parts = entry.Split(':');
+            if (parts.Length == 2 && long.TryParse(parts[0], out var id))
+                FrameOrientations[id] = parts[1] == "h" ? FrameOrientation.Horizontal : FrameOrientation.Vertical;
+        }
+    }
+
+    public async Task SetFrameOrientationAsync(long deviceId, FrameOrientation orientation)
+    {
+        if (_cacheStore is null)
+            return;
+
+        FrameOrientations[deviceId] = orientation;
+        var raw = string.Join(",", FrameOrientations.Select(kv => $"{kv.Key}:{(kv.Value == FrameOrientation.Horizontal ? "h" : "v")}"));
+        await _cacheStore.SetSettingAsync("FrameOrientations", raw, CancellationToken.None);
+    }
+
+    // What to pre-select when cropping an image that's going into (or already in) this playlist:
+    // look at every frame it's installed on - horizontal only if they're ALL set to horizontal,
+    // so a mix of orientations (or a frame nobody's set yet, or no frame at all) comes out
+    // vertical, which is the default.
+    public CropSuggestion GetCropSuggestion(long? galleryId)
+    {
+        var frames = new List<MeuralDevice>();
+        if (galleryId is long id && AllDevicesCache is not null && DeviceGalleriesCache is not null)
+        {
+            frames = AllDevicesCache
+                .Where(d => d.Id is long deviceId
+                    && DeviceGalleriesCache.TryGetValue(deviceId, out var galleries)
+                    && galleries.Any(g => g.Id == id))
+                .ToList();
+        }
+
+        var names = frames.Select(f => f.Alias ?? $"Frame {f.Id}").ToList();
+        var allHorizontal = frames.Count > 0 && frames.All(f => f.Id is long deviceId
+            && FrameOrientations.TryGetValue(deviceId, out var o) && o == FrameOrientation.Horizontal);
+        return new CropSuggestion(allHorizontal ? FrameOrientation.Horizontal : FrameOrientation.Vertical, names);
+    }
+
     // Which optional features are switched on - per-account like the settings above (so they follow
     // the account across browsers/devices and survive clearing site data), unlike the pane widths
     // in UserPreferencesStore, which depend on one browser's screen. A null field means "never
@@ -655,6 +714,32 @@ public sealed class MeuralSessionState(
         await WriteAsync("FeatureCrop", toggles.CropFeatureEnabled);
         await WriteAsync("FeatureRemoteControl", toggles.RemoteControlEnabled);
         await WriteAsync("FeatureImmich", toggles.ImmichEnabled);
+    }
+
+    // Which saved API keys are still in the DB but can no longer be decrypted (the Data Protection
+    // keys they were encrypted with are gone, or were configured differently at the time). The
+    // Load*Settings methods above quietly turn those into "not set" - correct for the code using
+    // them, but it makes a key look lost - so Settings uses this to say what actually happened.
+    public sealed record UnreadableSecrets(bool Claude, bool OpenAi, bool Immich)
+    {
+        public bool Any => Claude || OpenAi || Immich;
+    }
+
+    public async Task<UnreadableSecrets> GetUnreadableSecretsAsync()
+    {
+        if (_cacheStore is null)
+            return new UnreadableSecrets(false, false, false);
+
+        async Task<bool> IsUnreadableAsync(string key)
+        {
+            var stored = await _cacheStore.GetSettingAsync(key, CancellationToken.None);
+            return !string.IsNullOrEmpty(stored) && TryUnprotect(stored) is null;
+        }
+
+        return new UnreadableSecrets(
+            await IsUnreadableAsync("AiClaudeApiKey"),
+            await IsUnreadableAsync("AiOpenAiApiKey"),
+            await IsUnreadableAsync("ImmichApiKey"));
     }
 
     private string? Protect(string? plainText) =>

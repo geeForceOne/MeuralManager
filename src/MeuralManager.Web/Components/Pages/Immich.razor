@@ -3,6 +3,7 @@
 @inject MeuralSessionState Session
 @inject UserPreferencesStore Preferences
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
 <div class="page-header">
     <h1>Immich</h1>
@@ -32,6 +33,8 @@ else
         <button type="button" role="tab" class="tab @(_tab == Tab.People ? "active" : "")" @onclick="() => SwitchTabAsync(Tab.People)">People</button>
     </div>
 
+    <div class="playlist-layout immich-layout" id="immichSplit">
+    <div class="pane pane-browse">
     @if (_tab == Tab.Photos)
     {
         <div class="immich-filters">
@@ -145,35 +148,211 @@ else
         }
 
         <ImmichPhotoGrid Photos="_assets" ProxyToken="@_proxyToken" Selected="_selectedIds" Uploaded="_uploadedIds"
+                         Previewing="@_previewAsset?.Id"
                          Grouped="@(_tab != Tab.Photos || string.IsNullOrWhiteSpace(_query))"
                          HasMore="@(_nextPage is not null)" Loading="_loadingAssets"
-                         OnToggle="OnTileToggle" OnToggleDay="OnDayToggle" OnLoadMore="() => LoadAssetsAsync(reset: false)" />
+                         OnPreview="PreviewAsset" OnToggle="OnTileToggle" OnToggleDay="OnDayToggle"
+                         OnLoadMore="() => LoadAssetsAsync(reset: false)" />
     }
+    </div>
 
-    @if (_selected.Count > 0)
-    {
-        <div class="immich-upload-bar">
-            <span class="immich-upload-count">@_selected.Count selected</span>
-            <button type="button" class="btn btn-ghost btn-sm" @onclick="ClearSelection" disabled="@_busy">Clear</button>
+    <div class="split-handle" data-resize="next" data-pane-key="basket"></div>
+
+    <div class="pane pane-basket">
+        <div class="basket-header">
+            <h3 class="pane-preview-title">Upload basket</h3>
+            <span class="basket-count">@_selected.Count</span>
             <div class="toolbar-spacer"></div>
             @if (_busy)
             {
                 <span class="spinner spinner-inline" title="Working…"></span>
                 <button type="button" class="btn btn-ghost btn-sm" @onclick="Cancel">Cancel</button>
             }
-            <select class="text-input immich-playlist-select" @bind="_targetGalleryId" disabled="@_busy" aria-label="Target playlist">
-                <option value="">Choose a playlist…</option>
-                @foreach (var playlist in AllPlaylists)
+            @if (_selected.Count > 0)
+            {
+                @if (HasAiKey)
                 {
-                    <option value="@playlist.Id">@(IsFavorite(playlist) ? "★ " : "")@playlist.Name</option>
+                    <button type="button" class="btn btn-secondary btn-sm" @onclick="AiRenameAllAsync" disabled="@_busy"
+                            title="Suggest a name for every photo in the basket with the default AI provider from Settings">
+                        AI rename all
+                    </button>
                 }
-            </select>
-            <button type="button" class="btn btn-secondary btn-sm" @onclick="CreatePlaylistAsync" disabled="@_busy">+ New</button>
-            <button type="button" class="btn btn-primary" @onclick="UploadSelectedAsync" disabled="@(_busy || _targetGalleryId is null)">
-                Upload to playlist
+                <button type="button" class="btn btn-ghost btn-sm" @onclick="ClearSelection" disabled="@_busy">Clear</button>
+            }
+        </div>
+
+        <div class="basket-scroll">
+        @if (_selected.Count == 0)
+        {
+            <p class="empty-state">Nothing in the basket yet. Click ✓ on a photo (or shift-click for a range) to add it.</p>
+        }
+        else
+        {
+            <ul class="basket-list">
+                @foreach (var asset in _selected)
+                {
+                    var taken = TakenLabel(asset);
+                    <li class="basket-item @(_previewAsset?.Id == asset.Id ? "previewing" : "")" @key="asset.Id" @onclick="() => PreviewAsset(asset)">
+                        <img class="basket-thumb" src="immich-proxy/@_proxyToken/asset/@asset.Id/thumbnail" loading="lazy" alt="" />
+                        <div class="basket-item-body">
+                            <input class="text-input basket-name" value="@NameFor(asset)" disabled="@_busy"
+                                   aria-label="Name in Meural" title="The name this photo gets in Meural"
+                                   @onclick:stopPropagation="true" @onchange="e => SetName(asset, e.Value?.ToString())" />
+                            <div class="basket-item-meta muted" title="@asset.OriginalFileName">
+                                @asset.OriginalFileName@(taken is null ? "" : $" · {taken}")@(_uploadedIds.Contains(asset.Id) ? " · On Meural" : "")
+                            </div>
+                        </div>
+                        <div class="basket-item-actions" @onclick:stopPropagation="true">
+                            @if (_aiSettings.HasKeyFor(AiProvider.Claude))
+                            {
+                                <button type="button" class="basket-btn" title="Suggest a name with Claude" disabled="@(_busy || _suggestingId == asset.Id)"
+                                        @onclick="() => SuggestNameAsync(asset, AiProvider.Claude)">
+                                    @if (_suggestingId == asset.Id && _suggestingProvider == AiProvider.Claude)
+                                    {
+                                        <span class="spinner spinner-inline"></span>
+                                    }
+                                    else
+                                    {
+                                        <span>C</span>
+                                    }
+                                </button>
+                            }
+                            @if (_aiSettings.HasKeyFor(AiProvider.ChatGpt))
+                            {
+                                <button type="button" class="basket-btn" title="Suggest a name with ChatGPT" disabled="@(_busy || _suggestingId == asset.Id)"
+                                        @onclick="() => SuggestNameAsync(asset, AiProvider.ChatGpt)">
+                                    @if (_suggestingId == asset.Id && _suggestingProvider == AiProvider.ChatGpt)
+                                    {
+                                        <span class="spinner spinner-inline"></span>
+                                    }
+                                    else
+                                    {
+                                        <span>G</span>
+                                    }
+                                </button>
+                            }
+                            <button type="button" class="basket-btn" title="Remove from basket" aria-label="Remove from basket"
+                                    disabled="@_busy" @onclick="() => SetSelected(asset, false)">✕</button>
+                        </div>
+                    </li>
+                }
+            </ul>
+        }
+
+        @* Read-only look at what the chosen playlist already holds (from any source) - below the
+           upload entries so the photos about to be sent stay on top. *@
+        @if (_showExisting && SelectedPlaylist is { } existingPlaylist)
+        {
+            var existing = ExistingItems(existingPlaylist);
+            <div class="basket-existing">
+                <h4 class="basket-existing-title">Already in "@existingPlaylist.Name" <span class="muted">(@existing.Count)</span></h4>
+                @if (existing.Count == 0)
+                {
+                    <p class="muted basket-hint">This playlist is empty.</p>
+                }
+                else
+                {
+                    <div class="basket-existing-grid">
+                        @foreach (var item in existing)
+                        {
+                            <div class="basket-existing-tile @(_previewItem?.Id == item.Id ? "previewing" : "")" @key="item.Id"
+                                 title="@item.Name" @onclick="() => PreviewExisting(item)">
+                                <ItemImage Item="item" CssClass="basket-existing-thumb" />
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+        </div>
+
+        <div class="basket-footer">
+            <div class="basket-footer-row">
+                <select class="text-input immich-playlist-select" @bind="_targetGalleryId" disabled="@_busy" aria-label="Target playlist">
+                    <option value="">Choose a playlist…</option>
+                    @foreach (var playlist in AllPlaylists)
+                    {
+                        <option value="@playlist.Id">@(IsFavorite(playlist) ? "★ " : "")@playlist.Name</option>
+                    }
+                </select>
+                <button type="button" class="btn btn-secondary btn-sm" @onclick="CreatePlaylistAsync" disabled="@_busy">+ New</button>
+            </div>
+            <label class="immich-toggle">
+                <input type="checkbox" @bind="_showExisting" disabled="@(_targetGalleryId is null)" />
+                <span>Show what's already in this playlist</span>
+            </label>
+            @if (_cropFeatureEnabled)
+            {
+                <p class="muted basket-hint">@CropHint</p>
+            }
+            <button type="button" class="btn btn-primary" @onclick="UploadSelectedAsync"
+                    disabled="@(_busy || _targetGalleryId is null || _selected.Count == 0)">
+                Upload@(_selected.Count > 0 ? $" {_selected.Count}" : "") to playlist
             </button>
         </div>
-    }
+    </div>
+
+    <div class="split-handle" data-resize="next" data-pane-key="preview"></div>
+
+    <div class="pane pane-preview">
+        <h3 class="pane-preview-title">Preview</h3>
+        @if (_previewItem is not null)
+        {
+            // An image already in the playlist (clicked in the basket's read-only list) - just
+            // shown, nothing to do with it from here.
+            <div class="preview-body">
+                <div class="preview-image-wrap">
+                    <ItemImage Item="_previewItem" CssClass="preview-image" />
+                </div>
+                <div class="preview-info">
+                    <p class="preview-name">@(_previewItem.Name ?? "(untitled)")</p>
+                    @if (!string.IsNullOrWhiteSpace(_previewItem.CreatedAt))
+                    {
+                        <p class="muted preview-meta">Uploaded @_previewItem.CreatedAt</p>
+                    }
+                    @if (SelectedPlaylist is { } previewPlaylist)
+                    {
+                        <p class="muted preview-meta">Already in "@previewPlaylist.Name"</p>
+                    }
+                </div>
+            </div>
+        }
+        else if (_previewAsset is null)
+        {
+            <p class="empty-state">Click a photo to preview it</p>
+        }
+        else
+        {
+            var taken = TakenLabel(_previewAsset);
+            <div class="preview-body">
+                <div class="preview-image-wrap">
+                    <img class="preview-image" src="immich-proxy/@_proxyToken/asset/@_previewAsset.Id/preview" alt="" />
+                </div>
+                <div class="preview-info">
+                <p class="preview-name">@(_previewAsset.OriginalFileName ?? _previewAsset.Id)</p>
+                @if (taken is not null)
+                {
+                    <p class="muted preview-meta">Taken @taken</p>
+                }
+                @if (_uploadedIds.Contains(_previewAsset.Id))
+                {
+                    <p class="muted preview-meta">Already uploaded to Meural from here</p>
+                }
+                <div class="preview-crop-actions">
+                    @if (_selectedIds.Contains(_previewAsset.Id))
+                    {
+                        <button type="button" class="btn btn-secondary btn-sm" disabled="@_busy" @onclick="() => SetSelected(_previewAsset, false)">Remove from basket</button>
+                    }
+                    else
+                    {
+                        <button type="button" class="btn btn-primary btn-sm" disabled="@_busy" @onclick="() => SetSelected(_previewAsset, true)">Add to basket</button>
+                    }
+                </div>
+                </div>
+            </div>
+        }
+    </div>
+    </div>
 }
 
 @if (_log.Entries.Count > 0)
@@ -192,6 +371,7 @@ else
     private bool _ready;
     private bool _busy;
     private bool _cropFeatureEnabled = true;
+    private AiSettings _aiSettings = new();
     private ImmichApiClient? _immich;
     private string? _connectionError;
     private string _proxyToken = "";
@@ -224,6 +404,27 @@ else
     private HashSet<string> _uploadedIds = [];
     private long? _targetGalleryId;
 
+    // The photo shown in the preview pane - independent of the basket (a plain click previews,
+    // it doesn't select), and kept across tab switches.
+    private ImmichAsset? _previewAsset;
+
+    // Or, instead, an image already in the target playlist - only one of the two is ever set.
+    private MeuralItem? _previewItem;
+
+    // Whether the basket also lists what the chosen playlist already holds (read-only), and the
+    // last list built for it - see ExistingItems.
+    private bool _showExisting;
+    private (List<long>? ItemIds, List<MeuralItem>? All, List<MeuralItem> Items)? _existingMemo;
+
+    // Names the user (or the AI) has chosen for basket photos, by Immich asset id. A photo without
+    // an entry uses its filename - see NameFor. The chosen name is what the Meural item is called.
+    private readonly Dictionary<string, string> _names = [];
+    private string? _suggestingId;
+    private AiProvider? _suggestingProvider;
+
+    private DotNetObjectReference<Immich>? _splitterRef;
+    private bool _splitterInit;
+
     private CancellationTokenSource? _cts;
     private readonly ActivityLog _log = new();
     private ConfirmDialog _confirm = null!;
@@ -239,6 +440,45 @@ else
             .ToList();
 
     private bool IsFavorite(MeuralGallery gallery) => gallery.Id is long id && Session.FavoriteGalleryIds.Contains(id);
+
+    private MeuralGallery? SelectedPlaylist => AllPlaylists.FirstOrDefault(p => p.Id == _targetGalleryId);
+
+    private bool HasAiKey => _aiSettings.HasKeyFor(AiProvider.Claude) || _aiSettings.HasKeyFor(AiProvider.ChatGpt);
+
+    // Says which crop format the dialog will open on for the chosen playlist, and why - see
+    // MeuralSessionState.GetCropSuggestion.
+    private string CropHint
+    {
+        get
+        {
+            if (_targetGalleryId is null)
+                return "Choose a playlist - crops open on the format of the frames it's installed on (9:16 by default).";
+
+            var suggestion = Session.GetCropSuggestion(_targetGalleryId);
+            var format = suggestion.Orientation == FrameOrientation.Horizontal ? "16:9 (horizontal)" : "9:16 (vertical)";
+            return suggestion.FrameNames.Count > 0
+                ? $"Crops open as {format} - this playlist is on {string.Join(", ", suggestion.FrameNames)}."
+                : $"Crops open as {format} - this playlist isn't installed on a frame yet.";
+        }
+    }
+
+    private static string DefaultName(ImmichAsset asset) =>
+        Path.GetFileNameWithoutExtension(asset.OriginalFileName ?? asset.Id);
+
+    private string NameFor(ImmichAsset asset) => _names.TryGetValue(asset.Id, out var name) ? name : DefaultName(asset);
+
+    private void SetName(ImmichAsset asset, string? value)
+    {
+        var name = value?.Trim();
+        // Blank, or just the filename again, isn't a choice - fall back to the default.
+        if (string.IsNullOrEmpty(name) || name == DefaultName(asset))
+            _names.Remove(asset.Id);
+        else
+            _names[asset.Id] = name;
+    }
+
+    private static string? TakenLabel(ImmichAsset asset) =>
+        (asset.LocalDateTime ?? asset.FileCreatedAt)?.ToString("ddd, MMM d, yyyy h:mm tt");
 
     // Snapshot of every upload id already known before an upload attempt - lets
     // UploadAndAddToGalleryAsync recognize a just-created item after a timeout.
@@ -275,6 +515,7 @@ else
         }
 
         _cropFeatureEnabled = prefs.CropFeatureEnabled;
+        _aiSettings = await Session.LoadAiSettingsAsync();
 
         try
         {
@@ -285,12 +526,50 @@ else
             _connectionError = $"Couldn't use the saved Immich settings: {ex.Message}";
         }
 
+        // A saved key that can no longer be decrypted looks exactly like "not set up" here - say so.
+        if (_immich is null && _connectionError is null && (await Session.GetUnreadableSecretsAsync()).Immich)
+            _connectionError = "The saved Immich API key can't be read any more.";
+
         _proxyToken = Session.ImmichProxyToken ?? "";
         _uploadedIds = await Session.LoadImmichUploadedAssetIdsAsync();
         _ready = true;
 
         if (_immich is not null && Session.HasScanned)
             await LoadAssetsAsync(reset: true);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // The three-pane layout only exists once Immich is connected, so this keeps trying after
+        // each render until meuralSplitter.init finds the container.
+        if (_splitterInit || !_ready || _immich is null || !Session.HasScanned)
+            return;
+
+        _splitterRef ??= DotNetObjectReference.Create(this);
+        var prefs = await Preferences.LoadAsync();
+        try
+        {
+            _splitterInit = await JS.InvokeAsync<bool>("meuralSplitter.init", "immichSplit", _splitterRef,
+                new { basket = prefs.ImmichBasketPaneWidth, preview = prefs.ImmichPreviewPaneWidth });
+        }
+        catch (JSDisconnectedException)
+        {
+            // Circuit already gone.
+        }
+    }
+
+    // Invoked by splitter.js once per drag so a pane's width survives a reload.
+    [JSInvokable]
+    public async Task OnSplitterResized(string paneKey, double width)
+    {
+        var prefs = await Preferences.LoadAsync();
+        var updated = paneKey switch
+        {
+            "basket" => prefs with { ImmichBasketPaneWidth = width },
+            "preview" => prefs with { ImmichPreviewPaneWidth = width },
+            _ => prefs,
+        };
+        await Preferences.SaveAsync(updated);
     }
 
     private Task ReloadAsync() => LoadAssetsAsync(reset: true);
@@ -465,6 +744,38 @@ else
         CancelLoad();
     }
 
+    // The playlist's images in playlist order, from the scan's cache (so as fresh as the last scan
+    // or app action - no Meural call). Rebuilt only when the playlist's id list or the item cache
+    // is replaced, since render calls this every time.
+    private List<MeuralItem> ExistingItems(MeuralGallery playlist)
+    {
+        var all = Session.AllItemsCache;
+        if (_existingMemo is { } memo && ReferenceEquals(memo.ItemIds, playlist.ItemIds) && ReferenceEquals(memo.All, all))
+            return memo.Items;
+
+        var byId = (all ?? []).Where(i => i.Id.HasValue).ToDictionary(i => i.Id!.Value);
+        var items = (playlist.ItemIds ?? [])
+            .Select(id => byId.TryGetValue(id, out var item) ? item : null)
+            .OfType<MeuralItem>()
+            .ToList();
+        _existingMemo = (playlist.ItemIds, all, items);
+        return items;
+    }
+
+    private void PreviewExisting(MeuralItem item)
+    {
+        _previewItem = item;
+        _previewAsset = null;
+    }
+
+    private void PreviewAsset(ImmichAsset asset)
+    {
+        _previewAsset = asset;
+        _previewItem = null;
+        // Also the anchor for a shift-click range, like the last photo clicked to select.
+        _lastClickedId = asset.Id;
+    }
+
     private void OnTileToggle((ImmichAsset Asset, bool Shift) args)
     {
         var (asset, shift) = args;
@@ -505,6 +816,7 @@ else
         else if (_selectedIds.Remove(asset.Id))
         {
             _selected.RemoveAll(a => a.Id == asset.Id);
+            _names.Remove(asset.Id);
         }
     }
 
@@ -512,7 +824,118 @@ else
     {
         _selected.Clear();
         _selectedIds.Clear();
+        _names.Clear();
         _lastClickedId = null;
+    }
+
+    // Asks the given provider (regardless of the default in Settings - the basket shows one button
+    // per configured provider) to name the photo, and fills the result into its name field. The
+    // photo goes to the AI as Immich's ~1440px preview rendition - always a JPEG, and much lighter
+    // than the original.
+    private async Task SuggestNameAsync(ImmichAsset asset, AiProvider provider)
+    {
+        if (_immich is null || _busy || _suggestingId is not null)
+            return;
+
+        var aiSettings = (await Session.LoadAiSettingsAsync()) with { Provider = provider };
+        if (!aiSettings.HasKeyFor(provider))
+        {
+            _toast.ShowError($"No API key configured for {provider} - add one in Settings.");
+            return;
+        }
+
+        _suggestingId = asset.Id;
+        _suggestingProvider = provider;
+        try
+        {
+            _names[asset.Id] = await SuggestFromImmichAsync(asset, aiSettings, CancellationToken.None);
+        }
+        catch (AiNamingException ex)
+        {
+            _log.Append($"Couldn't suggest a name for \"{asset.OriginalFileName}\": {ex.Message}");
+            _toast.ShowError(ex.Message);
+        }
+        catch (Exception ex)
+        {
+            _log.Append($"Couldn't suggest a name for \"{asset.OriginalFileName}\": {ex.Message}");
+            _toast.ShowError($"Couldn't suggest a name: {ex.Message}");
+        }
+        finally
+        {
+            _suggestingId = null;
+            _suggestingProvider = null;
+        }
+    }
+
+    // Same, for the whole basket with the default provider, politely paced like the other bulk
+    // AI/Meural loops. Only fills in the name fields - nothing is sent to Meural until Upload.
+    private async Task AiRenameAllAsync()
+    {
+        if (_immich is null || _busy || _selected.Count == 0)
+            return;
+
+        var aiSettings = await Session.LoadAiSettingsAsync();
+        if (!aiSettings.HasKeyFor(aiSettings.Provider))
+        {
+            _toast.ShowError($"No API key configured for {aiSettings.Provider} - add one in Settings.");
+            return;
+        }
+
+        var assets = _selected.ToList();
+        _busy = true;
+        var cts = _cts = new CancellationTokenSource();
+        try
+        {
+            _log.Append($"AI-naming {assets.Count} photo(s) with {aiSettings.Provider}...");
+            int done = 0, failed = 0;
+            for (var i = 0; i < assets.Count; i++)
+            {
+                var asset = assets[i];
+                try
+                {
+                    _names[asset.Id] = await SuggestFromImmichAsync(asset, aiSettings, cts.Token);
+                    done++;
+                    StateHasChanged();
+                }
+                catch (AiNamingException ex)
+                {
+                    failed++;
+                    _log.Append($"[{i + 1}/{assets.Count}] Couldn't suggest a name for \"{asset.OriginalFileName}\": {ex.Message}");
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    failed++;
+                    _log.Append($"[{i + 1}/{assets.Count}] Couldn't suggest a name for \"{asset.OriginalFileName}\": {ex.Message}");
+                }
+
+                if (i < assets.Count - 1)
+                    await Task.Delay(TimeSpan.FromMilliseconds(300), cts.Token);
+            }
+
+            _log.Append($"AI naming finished: {done} named, {failed} failed.");
+            if (failed > 0)
+                _toast.ShowError($"{failed} of {assets.Count} photo(s) couldn't be named.");
+            else
+                _toast.ShowSuccess($"Named {done} photo(s) - review them, then upload.");
+        }
+        catch (OperationCanceledException)
+        {
+            HandleCancellation(cts, "AI naming");
+        }
+        finally
+        {
+            _cts?.Dispose();
+            _cts = null;
+            _busy = false;
+        }
+    }
+
+    private async Task<string> SuggestFromImmichAsync(ImmichAsset asset, AiSettings aiSettings, CancellationToken ct)
+    {
+        using var response = await _immich!.GetAssetThumbnailAsync(asset.Id, "preview", ct);
+        var bytes = await response.Content.ReadAsByteArrayAsync(ct);
+        var mediaType = response.Content.Headers.ContentType?.MediaType ?? "image/jpeg";
+        return await ImageNamingService.SuggestNameAsync(aiSettings, bytes, mediaType, SelectedPlaylist?.Name, _log.AsProgress(), ct);
     }
 
     private async Task CreatePlaylistAsync()
@@ -597,11 +1020,15 @@ else
         {
             _log.Append($"Fetching {assets.Count} photo(s) from Immich...");
             var cropping = _cropFeatureEnabled;
+            // The crop dialog opens on the format of the frame(s) this playlist is installed on.
+            var cropAspect = Session.GetCropSuggestion(galleryId).Aspect;
             for (var i = 0; i < assets.Count; i++)
             {
                 cts.Token.ThrowIfCancellationRequested();
                 var asset = assets[i];
                 var label = asset.OriginalFileName ?? asset.Id;
+                // The Meural item is named after the file, so the basket's name field decides it.
+                var baseName = FileNaming.SanitizeFileName(NameFor(asset));
                 try
                 {
                     // Same crop dialog and skip/skip-all choices as uploading a local file from the
@@ -609,7 +1036,7 @@ else
                     if (cropping)
                     {
                         var result = await _cropDialog.CropAsync(
-                            ProxyImageUrl(asset), CropDialog.CropAspect.Wide, allowSkip: true, remainingCount: assets.Count - i);
+                            ProxyImageUrl(asset), cropAspect, allowSkip: true, remainingCount: assets.Count - i);
 
                         if (result.Outcome == CropDialog.CropOutcome.Cancelled)
                         {
@@ -625,7 +1052,7 @@ else
                             var assetDir = Path.Combine(tempDir, asset.Id);
                             Directory.CreateDirectory(assetDir);
                             // The crop dialog always exports JPEG.
-                            var uploadPath = Path.Combine(assetDir, $"{FileNaming.SanitizeFileName(Path.GetFileNameWithoutExtension(label))}.jpg");
+                            var uploadPath = Path.Combine(assetDir, $"{baseName}.jpg");
                             File.Move(croppedPath, uploadPath, overwrite: true);
                             uploadPaths.Add(uploadPath);
                             assetByPath[uploadPath] = asset;
@@ -646,8 +1073,9 @@ else
                     }
 
                     var download = await _immich.DownloadForUploadAsync(asset, tempDir, cts.Token);
-                    uploadPaths.Add(download.FilePath);
-                    assetByPath[download.FilePath] = asset;
+                    var uploadFile = RenameForUpload(download.FilePath, baseName);
+                    uploadPaths.Add(uploadFile);
+                    assetByPath[uploadFile] = asset;
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
@@ -700,7 +1128,7 @@ else
         }
         catch (OperationCanceledException)
         {
-            HandleCancellation(cts);
+            HandleCancellation(cts, "Upload");
         }
         catch (Exception ex)
         {
@@ -716,11 +1144,23 @@ else
         }
     }
 
+    // Gives a downloaded photo the file name the basket chose - each asset has its own subfolder
+    // (see ImmichApiClient.DownloadForUploadAsync), so this can't collide with another photo.
+    private static string RenameForUpload(string path, string baseName)
+    {
+        var target = Path.Combine(Path.GetDirectoryName(path)!, baseName + Path.GetExtension(path));
+        if (string.Equals(target, path, StringComparison.Ordinal))
+            return path;
+
+        File.Move(path, target, overwrite: true);
+        return target;
+    }
+
     private void Cancel() => _cts?.Cancel();
 
     // Distinguishes the user clicking Cancel from an HttpClient timeout firing on its own - the
     // latter is a real failure that deserves a toast, not a silent "Cancelled." nobody sees.
-    private void HandleCancellation(CancellationTokenSource cts)
+    private void HandleCancellation(CancellationTokenSource cts, string operation)
     {
         if (cts.Token.IsCancellationRequested)
         {
@@ -728,8 +1168,8 @@ else
             return;
         }
 
-        _log.Append("Upload timed out.");
-        _toast.ShowError("Upload timed out - the server took too long to respond.");
+        _log.Append($"{operation} timed out.");
+        _toast.ShowError($"{operation} timed out - the server took too long to respond.");
     }
 
     private void HandleLogChanged() => InvokeAsync(StateHasChanged);
@@ -737,6 +1177,7 @@ else
     public void Dispose()
     {
         _log.Changed -= HandleLogChanged;
+        _splitterRef?.Dispose();
         _loadCts?.Cancel();
         _loadCts?.Dispose();
         _cts?.Cancel();
