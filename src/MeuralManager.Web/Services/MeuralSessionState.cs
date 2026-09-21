@@ -504,8 +504,8 @@ public sealed class MeuralSessionState(
 
     // Immich connection (server URL + API key) - per-account like AiSettings above, with the key
     // Data-Protection-encrypted before it reaches the DB. Whether the integration is switched on
-    // at all is a separate per-browser preference (UserPreferencesStore.ImmichEnabled), so
-    // turning it off doesn't throw these away.
+    // at all is a separate toggle (UserPreferencesStore.ImmichEnabled, see FeatureToggles below),
+    // so turning it off doesn't throw these away.
     public async Task<ImmichSettings> LoadImmichSettingsAsync()
     {
         if (_cacheStore is null)
@@ -615,6 +615,46 @@ public sealed class MeuralSessionState(
 
         var raw = string.Join(",", deviceIds.Select(id => id?.ToString() ?? ""));
         await _cacheStore.SetSettingAsync("RemoteToolbarDeviceIds", raw, CancellationToken.None);
+    }
+
+    // Which optional features are switched on - per-account like the settings above (so they follow
+    // the account across browsers/devices and survive clearing site data), unlike the pane widths
+    // in UserPreferencesStore, which depend on one browser's screen. A null field means "never
+    // saved for this account", which UserPreferencesStore uses to tell "still on the default" from
+    // "explicitly chosen" when it migrates an older browser-stored value over.
+    public sealed record FeatureToggles(
+        bool? ShowPictureOfTheMoment = null,
+        bool? CropFeatureEnabled = null,
+        bool? RemoteControlEnabled = null,
+        bool? ImmichEnabled = null);
+
+    public async Task<FeatureToggles> LoadFeatureTogglesAsync()
+    {
+        if (_cacheStore is null)
+            return new FeatureToggles();
+
+        async Task<bool?> ReadAsync(string key) =>
+            bool.TryParse(await _cacheStore.GetSettingAsync(key, CancellationToken.None), out var value) ? value : null;
+
+        return new FeatureToggles(
+            await ReadAsync("FeatureShowPictureOfTheMoment"),
+            await ReadAsync("FeatureCrop"),
+            await ReadAsync("FeatureRemoteControl"),
+            await ReadAsync("FeatureImmich"));
+    }
+
+    public async Task SaveFeatureTogglesAsync(FeatureToggles toggles)
+    {
+        if (_cacheStore is null)
+            return;
+
+        Task WriteAsync(string key, bool? value) =>
+            _cacheStore.SetSettingAsync(key, value?.ToString(), CancellationToken.None);
+
+        await WriteAsync("FeatureShowPictureOfTheMoment", toggles.ShowPictureOfTheMoment);
+        await WriteAsync("FeatureCrop", toggles.CropFeatureEnabled);
+        await WriteAsync("FeatureRemoteControl", toggles.RemoteControlEnabled);
+        await WriteAsync("FeatureImmich", toggles.ImmichEnabled);
     }
 
     private string? Protect(string? plainText) =>
