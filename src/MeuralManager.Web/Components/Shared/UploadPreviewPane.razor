@@ -1,0 +1,70 @@
+@* The preview pane next to an UploadBasketPane: the photo (or, when one was clicked in the basket's
+   "already in the playlist" list, that existing Meural image) filling the space, with its details
+   and Add to / Remove from basket pinned below. *@
+<div class="pane pane-preview">
+    <h3 class="pane-preview-title">Preview</h3>
+    @if (Basket.PreviewItem is { } item)
+    {
+        // An image already in the playlist - just shown, nothing to do with it from here.
+        <div class="preview-body">
+            <div class="preview-image-wrap">
+                <ItemImage Item="item" CssClass="preview-image" />
+            </div>
+            <div class="preview-info">
+                <p class="preview-name">@(item.Name ?? "(untitled)")</p>
+                @if (!string.IsNullOrWhiteSpace(item.CreatedAt))
+                {
+                    <p class="muted preview-meta">Uploaded @item.CreatedAt</p>
+                }
+                @if (Basket.SelectedPlaylist is { } playlist)
+                {
+                    <p class="muted preview-meta">Already in "@playlist.Name"</p>
+                }
+            </div>
+        </div>
+    }
+    else if (Basket.PreviewEntry is not { } entry)
+    {
+        <p class="empty-state">@EmptyText</p>
+    }
+    else
+    {
+        <div class="preview-body">
+            <div class="preview-image-wrap">
+                <img class="preview-image" src="@PreviewUrl(entry)" alt="" />
+            </div>
+            <div class="preview-info">
+                <p class="preview-name">@entry.SourceName</p>
+                @if (entry.Taken is not null)
+                {
+                    <p class="muted preview-meta">Taken @entry.Taken</p>
+                }
+                @if (UploadedIds.Contains(entry.Id))
+                {
+                    <p class="muted preview-meta">Already uploaded to Meural from here</p>
+                }
+                <div class="preview-crop-actions">
+                    @if (Basket.Contains(entry.Id))
+                    {
+                        <button type="button" class="btn btn-secondary btn-sm" disabled="@Basket.Busy" @onclick="() => Basket.SetSelected(entry, false)">Remove from basket</button>
+                    }
+                    else
+                    {
+                        <button type="button" class="btn btn-primary btn-sm" disabled="@Basket.Busy" @onclick="() => Basket.SetSelected(entry, true)">Add to basket</button>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public UploadBasket Basket { get; set; } = null!;
+
+    // The preview-sized rendition of a photo - source-specific (e.g. Immich's ~1440px preview).
+    [Parameter, EditorRequired] public Func<BasketEntry, string> PreviewUrl { get; set; } = null!;
+
+    [Parameter] public HashSet<string> UploadedIds { get; set; } = [];
+
+    [Parameter] public string EmptyText { get; set; } = "Click a photo to preview it";
+}
