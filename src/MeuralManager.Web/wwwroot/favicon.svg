@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <!-- The Meural Manager mark (see Components/Shared/BrandMark.razor) on the sidebar's dark colour, so it reads on light and dark browser tabs alike. The thin mat line is left out: it disappears at 16px. -->
+  <rect width="24" height="24" rx="5.5" fill="#17151b"/>
+  <g fill="none" stroke="#d9974a" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3.6" y="3.6" width="16.8" height="16.8" rx="2.6"/>
+    <path d="M8 16.2V8l4 4.8L16 8v8.2"/>
+  </g>
+</svg>

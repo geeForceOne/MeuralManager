@@ -19,12 +19,15 @@ window.meuralInfiniteScroll = (function () {
                 previous.disconnect();
             }
 
+            // The photo grid lives in a scrolling pane, so observe against that pane rather than the
+            // viewport - otherwise the rootMargin can't reach past the pane's own clipping and the
+            // next page would only start loading once the sentinel is actually on screen.
             const observer = new IntersectionObserver(entries => {
                 if (entries.some(e => e.isIntersecting)) {
                     observer.disconnect();
                     dotNetRef.invokeMethodAsync('OnSentinelVisible');
                 }
-            }, { rootMargin: '600px 0px' });
+            }, { root: sentinelEl.closest('.pane'), rootMargin: '600px 0px' });
 
             observer.observe(sentinelEl);
             observers.set(sentinelEl, observer);

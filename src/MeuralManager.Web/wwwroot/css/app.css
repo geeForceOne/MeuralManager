@@ -315,6 +315,14 @@ a { color: var(--accent-strong); }
 .brand-mark {
     color: var(--accent);
     font-size: 1.3rem;
+    display: inline-flex;
+    line-height: 1;
+}
+
+/* The mark is an SVG (see BrandMark.razor), scaled with the font-size the context sets. */
+.brand-mark svg {
+    width: 1.35em;
+    height: 1.35em;
 }
 
 .brand-name {
@@ -970,12 +978,21 @@ a { color: var(--accent-strong); }
     border: 1px solid var(--border-soft);
     border-radius: var(--radius-lg);
     padding: 20px 22px;
-    max-width: 640px;
     margin-bottom: 20px;
 }
 
 .settings-group h2 {
     margin-bottom: 14px;
+}
+
+.setting-subheading {
+    margin: 18px 0 6px;
+    font-size: 1rem;
+}
+
+.frame-orientation-select {
+    width: auto;
+    min-width: 170px;
 }
 
 .setting-row {
@@ -1254,18 +1271,39 @@ a { color: var(--accent-strong); }
     letter-spacing: 0.04em;
 }
 
+/* Image on top taking every bit of height the pane has left, details and actions pinned below it -
+   so dragging the pane bigger (or taller) makes the picture bigger, whatever its orientation. The
+   min-height keeps the image usable, and the pane scrolls, when the window is too short for both. */
 .preview-body {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 12px;
+    flex: 1 1 auto;
+    min-height: 320px;
 }
 
+.preview-image-wrap {
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    background: var(--bg-inset);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+}
+
+/* Scales up as well as down to fit the wrap (object-fit keeps the whole picture visible). */
 .preview-image {
     width: 100%;
-    border-radius: var(--radius-md);
+    height: 100%;
     object-fit: contain;
-    background: var(--bg-inset);
-    max-height: 50vh;
+    display: block;
+}
+
+.preview-info {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex-shrink: 0;
 }
 
 .preview-name {
@@ -1734,6 +1772,8 @@ a { color: var(--accent-strong); }
 
     .pane-list,
     .pane-items,
+    .pane-browse,
+    .pane-basket,
     .pane-preview {
         flex: 1 1 auto !important;
         width: 100% !important;
@@ -1974,12 +2014,26 @@ a { color: var(--accent-strong); }
     transform: scale(0.92);
 }
 
+/* Marks the photo shown in the preview pane, inside the accent outline a selected tile also has. */
+.photo-tile.previewing::after {
+    content: "";
+    position: absolute;
+    inset: 3px;
+    border: 2px solid #fff;
+    border-radius: var(--radius-sm);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+    pointer-events: none;
+}
+
+/* The tile itself previews the photo; this circle (a button) is what adds it to the basket. */
 .photo-check {
     position: absolute;
     top: 8px;
     left: 8px;
     width: 22px;
     height: 22px;
+    padding: 0;
+    cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -2026,31 +2080,200 @@ a { color: var(--accent-strong); }
     flex-shrink: 0;
 }
 
-/* Stays pinned to the bottom of the scrolling content area while photos are being picked. */
-.immich-upload-bar {
-    position: sticky;
-    bottom: 0;
-    z-index: 10;
+/* Photos | upload basket | preview - the layout and splitter are the Playlists page's
+   (.playlist-layout, .split-handle); these are just the panes. */
+.pane-browse {
+    flex: 1 1 auto;
+    min-width: 320px;
+}
+
+.pane-basket {
+    flex: 0 0 340px;
+    min-width: 240px;
+    /* The list scrolls on its own so the playlist picker and Upload button stay put below it. */
+    overflow: hidden;
+}
+
+.basket-header {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
-    gap: 10px;
-    margin-top: auto;
-    padding: 12px 16px;
-    background: var(--bg-elevated);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    box-shadow: var(--shadow-md);
+    gap: 8px;
     flex-shrink: 0;
 }
 
-.immich-upload-count {
+.basket-header .pane-preview-title {
+    flex-shrink: 0;
+}
+
+.basket-count {
     font-weight: 600;
 }
 
+/* The upload entries and, below them, the read-only "already in the playlist" view scroll together. */
+.basket-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.basket-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.basket-existing {
+    flex-shrink: 0;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-soft);
+}
+
+.basket-existing-title {
+    margin: 0 0 8px;
+    font-size: 0.85rem;
+}
+
+.basket-existing-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+    gap: 6px;
+}
+
+.basket-existing-tile {
+    aspect-ratio: 1 / 1;
+    overflow: hidden;
+    background: var(--bg-inset);
+    border-radius: var(--radius-sm);
+    outline: 2px solid transparent;
+    outline-offset: -2px;
+    cursor: pointer;
+}
+
+.basket-existing-tile.previewing {
+    outline-color: var(--accent);
+}
+
+.basket-existing-thumb {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.basket-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px;
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.basket-item:hover {
+    border-color: var(--border);
+}
+
+.basket-item.previewing {
+    border-color: var(--accent);
+}
+
+.basket-thumb {
+    width: 56px;
+    height: 56px;
+    object-fit: cover;
+    border-radius: var(--radius-sm);
+    background: var(--bg-inset);
+    flex-shrink: 0;
+}
+
+.basket-item-body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.basket-name {
+    padding: 4px 8px;
+    font-size: 0.88rem;
+}
+
+.basket-item-meta {
+    font-size: 0.74rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.basket-item-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.basket-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    font: inherit;
+    font-size: 0.72rem;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--text-muted);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.basket-btn:hover:not(:disabled) {
+    color: var(--text);
+    border-color: var(--accent);
+}
+
+.basket-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.basket-footer {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-soft);
+    flex-shrink: 0;
+    margin-top: auto;
+}
+
+.basket-footer-row {
+    display: flex;
+    gap: 8px;
+}
+
+.basket-hint {
+    margin: 0;
+    font-size: 0.78rem;
+}
+
 .immich-playlist-select {
+    flex: 1;
+    min-width: 0;
     width: auto;
-    min-width: 200px;
 }
 
 .immich-permissions {
