@@ -1,0 +1,151 @@
+@* The upload basket pane: the photos picked for upload (each with an editable name and AI suggest
+   buttons), optionally what the target playlist already holds, and the playlist picker + Upload
+   button at the bottom. All state lives in the UploadBasket the page owns; this only renders it. *@
+<div class="pane pane-basket">
+    <div class="basket-header">
+        <h3 class="pane-preview-title">Upload basket</h3>
+        <span class="basket-count">@Basket.Entries.Count</span>
+        <div class="toolbar-spacer"></div>
+        @if (Basket.Busy)
+        {
+            <span class="spinner spinner-inline" title="Working…"></span>
+            <button type="button" class="btn btn-ghost btn-sm" @onclick="Basket.Cancel">Cancel</button>
+        }
+        @if (Basket.Entries.Count > 0)
+        {
+            @if (Basket.HasAnyKey)
+            {
+                <button type="button" class="btn btn-secondary btn-sm" @onclick="Basket.SuggestAllAsync" disabled="@Basket.Busy"
+                        title="Suggest a name for every photo in the basket with the default AI provider from Settings">
+                    AI rename all
+                </button>
+            }
+            <button type="button" class="btn btn-ghost btn-sm" @onclick="Basket.Clear" disabled="@Basket.Busy">Clear</button>
+        }
+    </div>
+
+    <div class="basket-scroll">
+    @if (Basket.Entries.Count == 0)
+    {
+        <p class="empty-state">@EmptyText</p>
+    }
+    else
+    {
+        <ul class="basket-list">
+            @foreach (var entry in Basket.Entries)
+            {
+                <li class="basket-item @(Basket.PreviewEntry?.Id == entry.Id ? "previewing" : "")" @key="entry.Id" @onclick="() => Basket.Preview(entry)">
+                    <img class="basket-thumb" src="@entry.ThumbUrl" loading="lazy" alt="" />
+                    <div class="basket-item-body">
+                        <input class="text-input basket-name" value="@Basket.NameFor(entry)" disabled="@Basket.Busy"
+                               aria-label="Name in Meural" title="The name this photo gets in Meural"
+                               @onclick:stopPropagation="true" @onchange="e => Basket.SetName(entry, e.Value?.ToString())" />
+                        <div class="basket-item-meta muted" title="@entry.SourceName">
+                            @entry.SourceName@(entry.Taken is null ? "" : $" · {entry.Taken}")@(UploadedIds.Contains(entry.Id) ? " · On Meural" : "")
+                        </div>
+                    </div>
+                    <div class="basket-item-actions" @onclick:stopPropagation="true">
+                        @if (Basket.HasKey(AiProvider.Claude))
+                        {
+                            <button type="button" class="basket-btn" title="Suggest a name with Claude" disabled="@(Basket.Busy || Basket.SuggestingId == entry.Id)"
+                                    @onclick="() => Basket.SuggestNameAsync(entry, AiProvider.Claude)">
+                                @if (Basket.SuggestingId == entry.Id && Basket.SuggestingProvider == AiProvider.Claude)
+                                {
+                                    <span class="spinner spinner-inline"></span>
+                                }
+                                else
+                                {
+                                    <span>C</span>
+                                }
+                            </button>
+                        }
+                        @if (Basket.HasKey(AiProvider.ChatGpt))
+                        {
+                            <button type="button" class="basket-btn" title="Suggest a name with ChatGPT" disabled="@(Basket.Busy || Basket.SuggestingId == entry.Id)"
+                                    @onclick="() => Basket.SuggestNameAsync(entry, AiProvider.ChatGpt)">
+                                @if (Basket.SuggestingId == entry.Id && Basket.SuggestingProvider == AiProvider.ChatGpt)
+                                {
+                                    <span class="spinner spinner-inline"></span>
+                                }
+                                else
+                                {
+                                    <span>G</span>
+                                }
+                            </button>
+                        }
+                        <button type="button" class="basket-btn" title="Remove from basket" aria-label="Remove from basket"
+                                disabled="@Basket.Busy" @onclick="() => Basket.Remove(entry.Id)">✕</button>
+                    </div>
+                </li>
+            }
+        </ul>
+    }
+
+    @* Read-only look at what the chosen playlist already holds (from any source) - below the
+       upload entries so the photos about to be sent stay on top. *@
+    @if (Basket.ShowExisting && Basket.SelectedPlaylist is { } existingPlaylist)
+    {
+        var existing = Basket.ExistingItems(existingPlaylist);
+        <div class="basket-existing">
+            <h4 class="basket-existing-title">Already in "@existingPlaylist.Name" <span class="muted">(@existing.Count)</span></h4>
+            @if (existing.Count == 0)
+            {
+                <p class="muted basket-hint">This playlist is empty.</p>
+            }
+            else
+            {
+                <div class="basket-existing-grid">
+                    @foreach (var item in existing)
+                    {
+                        <div class="basket-existing-tile @(Basket.PreviewItem?.Id == item.Id ? "previewing" : "")" @key="item.Id"
+                             title="@item.Name" @onclick="() => Basket.PreviewExisting(item)">
+                            <ItemImage Item="item" CssClass="basket-existing-thumb" />
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+    </div>
+
+    <div class="basket-footer">
+        <div class="basket-footer-row">
+            <select class="text-input basket-playlist-select" @bind="Basket.TargetGalleryId" disabled="@Basket.Busy" aria-label="Target playlist">
+                <option value="">Choose a playlist…</option>
+                @foreach (var playlist in Basket.AllPlaylists)
+                {
+                    <option value="@playlist.Id">@(Basket.IsFavorite(playlist) ? "★ " : "")@playlist.Name</option>
+                }
+            </select>
+            <button type="button" class="btn btn-secondary btn-sm" @onclick="OnCreatePlaylist" disabled="@Basket.Busy">+ New</button>
+        </div>
+        <label class="immich-toggle">
+            <input type="checkbox" @bind="Basket.ShowExisting" disabled="@(Basket.TargetGalleryId is null)" />
+            <span>Show what's already in this playlist</span>
+        </label>
+        @if (CropEnabled)
+        {
+            <p class="muted basket-hint">@Basket.CropHint</p>
+        }
+        <button type="button" class="btn btn-primary" @onclick="OnUpload"
+                disabled="@(Basket.Busy || Basket.TargetGalleryId is null || Basket.Entries.Count == 0)">
+            Upload@(Basket.Entries.Count > 0 ? $" {Basket.Entries.Count}" : "") to playlist
+        </button>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public UploadBasket Basket { get; set; } = null!;
+
+    // Whether the crop tool is on - decides whether the crop-format hint is shown.
+    [Parameter] public bool CropEnabled { get; set; }
+
+    // Photos already sent to Meural from this source - shown as "On Meural" in an entry's details.
+    [Parameter] public HashSet<string> UploadedIds { get; set; } = [];
+
+    [Parameter] public string EmptyText { get; set; } = "Nothing in the basket yet.";
+
+    // The page owns the dialogs and the source-specific upload steps, so these are its to handle.
+    [Parameter] public EventCallback OnCreatePlaylist { get; set; }
+    [Parameter] public EventCallback OnUpload { get; set; }
+}
