@@ -7,7 +7,7 @@ namespace MeuralManager.Web.Services;
 //    the SQLite settings table via MeuralSessionState, so they follow the account across browsers
 //    and survive clearing site data - the same place the Immich URL/key and the remote toolbar's
 //    device list already are.
-//  - The Playlists page's splitter widths depend on one browser's screen, so they stay in
+//  - The Playlists and Immich pages' splitter widths depend on one browser's screen, so they stay in
 //    ProtectedLocalStorage. Not cleared on sign-out.
 // Callers see one StoredPreferences record either way.
 public sealed class UserPreferencesStore(ProtectedLocalStorage storage, MeuralSessionState session)
@@ -25,7 +25,10 @@ public sealed class UserPreferencesStore(ProtectedLocalStorage storage, MeuralSe
         bool RemoteControlEnabled = true,
         // Off by default (unlike the other feature toggles): most people running this don't have
         // an Immich server, so the nav entry and settings stay out of their way until they opt in.
-        bool ImmichEnabled = false);
+        bool ImmichEnabled = false,
+        // The Immich page's basket and preview panes, same idea as the Playlists widths above.
+        double? ImmichBasketPaneWidth = null,
+        double? ImmichPreviewPaneWidth = null);
 
     // What's in the browser's localStorage. Only the widths are written now; the toggle fields are
     // legacy - they used to live here before moving to the account DB - and are only read, as a
@@ -37,7 +40,9 @@ public sealed class UserPreferencesStore(ProtectedLocalStorage storage, MeuralSe
         bool? ShowPictureOfTheMoment = null,
         bool? CropFeatureEnabled = null,
         bool? RemoteControlEnabled = null,
-        bool? ImmichEnabled = null);
+        bool? ImmichEnabled = null,
+        double? ImmichBasketPaneWidth = null,
+        double? ImmichPreviewPaneWidth = null);
 
     // Fired after a successful save so MainLayout (which stays mounted for the whole circuit,
     // unlike a page) can pick up a toggle - e.g. the remote control toolbar - flipped on the
@@ -77,7 +82,9 @@ public sealed class UserPreferencesStore(ProtectedLocalStorage storage, MeuralSe
             PreviewPaneWidth: browser.PreviewPaneWidth,
             CropFeatureEnabled: toggles.CropFeatureEnabled ?? defaults.CropFeatureEnabled,
             RemoteControlEnabled: toggles.RemoteControlEnabled ?? defaults.RemoteControlEnabled,
-            ImmichEnabled: toggles.ImmichEnabled ?? defaults.ImmichEnabled);
+            ImmichEnabled: toggles.ImmichEnabled ?? defaults.ImmichEnabled,
+            ImmichBasketPaneWidth: browser.ImmichBasketPaneWidth,
+            ImmichPreviewPaneWidth: browser.ImmichPreviewPaneWidth);
     }
 
     public async Task SaveAsync(StoredPreferences preferences)
@@ -93,7 +100,10 @@ public sealed class UserPreferencesStore(ProtectedLocalStorage storage, MeuralSe
 
         try
         {
-            await storage.SetAsync(Key, new BrowserPreferences(preferences.PlaylistListPaneWidth, preferences.PreviewPaneWidth));
+            await storage.SetAsync(Key, new BrowserPreferences(
+                preferences.PlaylistListPaneWidth, preferences.PreviewPaneWidth,
+                ImmichBasketPaneWidth: preferences.ImmichBasketPaneWidth,
+                ImmichPreviewPaneWidth: preferences.ImmichPreviewPaneWidth));
         }
         catch
         {

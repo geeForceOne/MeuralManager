@@ -52,6 +52,8 @@ else
     [Parameter, EditorRequired] public IReadOnlyList<ImmichAsset> Photos { get; set; } = [];
     [Parameter, EditorRequired] public string ProxyToken { get; set; } = "";
     [Parameter] public HashSet<string> Selected { get; set; } = [];
+    // The photo currently shown in the preview pane, if any - marked on its tile.
+    [Parameter] public string? Previewing { get; set; }
     // Photos already sent to Meural through this app - shown with a badge.
     [Parameter] public HashSet<string> Uploaded { get; set; } = [];
     // Day headings only make sense when Photos is in date order - a free-text search returns them
@@ -60,6 +62,9 @@ else
     [Parameter] public bool HasMore { get; set; }
     [Parameter] public bool Loading { get; set; }
 
+    // A plain click on a tile previews it; adding it to the upload basket is the check circle (or
+    // shift-click, which selects the whole range from the last-clicked photo).
+    [Parameter] public EventCallback<ImmichAsset> OnPreview { get; set; }
     [Parameter] public EventCallback<(ImmichAsset Asset, bool Shift)> OnToggle { get; set; }
     [Parameter] public EventCallback<(DateTime Day, bool Select)> OnToggleDay { get; set; }
     [Parameter] public EventCallback OnLoadMore { get; set; }
@@ -74,15 +79,20 @@ else
         .GroupBy(a => a.TakenDate)
         .Select(g => new Day(g.Key, g.ToList()));
 
+    private Task OnTileClick(ImmichAsset asset, MouseEventArgs e) =>
+        e.ShiftKey ? OnToggle.InvokeAsync((asset, true)) : OnPreview.InvokeAsync(asset);
+
     private string ThumbUrl(ImmichAsset asset) => $"immich-proxy/{ProxyToken}/asset/{asset.Id}/thumbnail";
 
     private RenderFragment Tile(ImmichAsset asset) => __builder =>
     {
         var selected = Selected.Contains(asset.Id);
-        <div class="photo-tile @(selected ? "selected" : "")" @key="asset.Id" title="@asset.OriginalFileName"
-             @onclick="e => OnToggle.InvokeAsync((asset, e.ShiftKey))">
+        <div class="photo-tile @(selected ? "selected" : "") @(Previewing == asset.Id ? "previewing" : "")" @key="asset.Id" title="@asset.OriginalFileName"
+             @onclick="e => OnTileClick(asset, e)">
             <img src="@ThumbUrl(asset)" loading="lazy" alt="" draggable="false" />
-            <span class="photo-check" aria-hidden="true">@(selected ? "✓" : "")</span>
+            <button type="button" class="photo-check" role="checkbox" aria-checked="@(selected ? "true" : "false")"
+                    title="@(selected ? "Remove from upload basket" : "Add to upload basket")"
+                    @onclick="e => OnToggle.InvokeAsync((asset, e.ShiftKey))" @onclick:stopPropagation="true">@(selected ? "✓" : "")</button>
             @if (Uploaded.Contains(asset.Id))
             {
                 <span class="photo-badge" title="Already uploaded to Meural from here">On Meural</span>

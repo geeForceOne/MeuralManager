@@ -41,6 +41,37 @@
         those saved originals - and the ability to revert - are gone for good</strong>, even
         though the already-cropped image itself stays fine on Meural.
     </p>
+
+    <h3 class="setting-subheading">Frames</h3>
+    <p class="muted setting-description">
+        Tell the app which way each frame hangs. When you add an image to a playlist, the crop tool
+        opens on the format of the frame(s) that playlist is installed on - 9:16 if any of them is
+        vertical, if you haven't set them, or if the playlist isn't on a frame yet. You can still
+        switch format in the crop tool.
+    </p>
+    @if (!Session.HasScanned || Frames.Count == 0)
+    {
+        <p class="muted setting-description">
+            @(Session.HasScanned ? "No frames found on this account." : "Scan your account from the Dashboard to list your frames.")
+        </p>
+    }
+    else
+    {
+        @foreach (var frame in Frames)
+        {
+            var deviceId = frame.Id ?? 0;
+            <div class="setting-row" @key="deviceId">
+                <div>
+                    <div class="setting-label">@(frame.Alias ?? $"Frame {deviceId}")</div>
+                </div>
+                <select class="text-input frame-orientation-select" aria-label="Orientation of @(frame.Alias ?? $"Frame {deviceId}")"
+                        value="@OrientationOf(deviceId)" @onchange="e => OnFrameOrientationChanged(deviceId, e)">
+                    <option value="@FrameOrientation.Vertical">9:16 (vertical)</option>
+                    <option value="@FrameOrientation.Horizontal">16:9 (horizontal)</option>
+                </select>
+            </div>
+        }
+    }
 </div>
 
 <div class="settings-group">
@@ -99,6 +130,10 @@
             <span>API key</span>
             <input class="text-input" type="password" autocomplete="off" @bind="_immichKey" @bind:event="oninput" />
         </label>
+        @if (_unreadable.Immich && string.IsNullOrEmpty(_immichKey))
+        {
+            <p class="immich-error">@UnreadableMessage("Immich")</p>
+        }
 
         <p class="muted setting-description">
             Create the key in Immich under <em>Account Settings → API Keys</em>, and enable these
@@ -144,6 +179,16 @@
         name like "IMG_1234"). Nothing is renamed automatically - you always review and can edit the
         suggestion before it's applied.
     </p>
+
+    @* Shown whichever provider is selected below, since the fields for the other one are hidden. *@
+    @if (_unreadable.Claude && string.IsNullOrEmpty(_claudeApiKey))
+    {
+        <p class="immich-error">@UnreadableMessage("Claude")</p>
+    }
+    @if (_unreadable.OpenAi && string.IsNullOrEmpty(_openAiApiKey))
+    {
+        <p class="immich-error">@UnreadableMessage("OpenAI")</p>
+    }
 
     <label class="field">
         <span>Provider</span>
@@ -223,6 +268,15 @@
     private bool _savingAi;
     private bool _aiSaved;
 
+    // Saved keys that are still in the DB but can't be decrypted any more - their fields load empty,
+    // so without this they'd just look like they'd vanished.
+    private MeuralSessionState.UnreadableSecrets _unreadable = new(false, false, false);
+
+    private static string UnreadableMessage(string what) =>
+        $"A saved {what} API key exists but can't be read - the encryption key it was saved with is no longer available. Enter it again and save to replace it.";
+
+    private async Task RefreshUnreadableAsync() => _unreadable = await Session.GetUnreadableSecretsAsync();
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender)
@@ -233,6 +287,8 @@
         _cropFeatureEnabled = prefs.CropFeatureEnabled;
         _remoteControlEnabled = prefs.RemoteControlEnabled;
         _immichEnabled = prefs.ImmichEnabled;
+
+        await RefreshUnreadableAsync();
 
         var immichSettings = await Session.LoadImmichSettingsAsync();
         _immichUrl = immichSettings.ServerUrl ?? "";
@@ -248,6 +304,18 @@
         _openAiModel = aiSettings.OpenAiModel ?? "";
 
         StateHasChanged();
+    }
+
+    private List<MeuralDevice> Frames => Session.AllDevicesCache ?? [];
+
+    // A frame nobody has set yet is treated as vertical - see FrameOrientation.
+    private FrameOrientation OrientationOf(long deviceId) =>
+        Session.FrameOrientations.TryGetValue(deviceId, out var orientation) ? orientation : FrameOrientation.Vertical;
+
+    private async Task OnFrameOrientationChanged(long deviceId, ChangeEventArgs e)
+    {
+        if (Enum.TryParse<FrameOrientation>(e.Value?.ToString(), out var orientation))
+            await Session.SetFrameOrientationAsync(deviceId, orientation);
     }
 
     private async Task OnToggleChanged(ChangeEventArgs e)
@@ -299,6 +367,7 @@
         try
         {
             await Session.SaveImmichSettingsAsync(new ImmichSettings { ServerUrl = _immichUrl, ApiKey = _immichKey });
+            await RefreshUnreadableAsync();
             _immichStatus = "Saved.";
             _immichStatusIsError = false;
         }
@@ -335,6 +404,7 @@
     private async Task ClearImmichSettingsAsync()
     {
         await Session.SaveImmichSettingsAsync(new ImmichSettings());
+        await RefreshUnreadableAsync();
         _immichUrl = "";
         _immichKey = "";
         _immichStatus = "Cleared.";
@@ -357,6 +427,7 @@
                 OpenAiApiKey = string.IsNullOrWhiteSpace(_openAiApiKey) ? null : _openAiApiKey.Trim(),
                 OpenAiModel = string.IsNullOrWhiteSpace(_openAiModel) ? null : _openAiModel.Trim(),
             });
+            await RefreshUnreadableAsync();
             _aiSaved = true;
         }
         finally

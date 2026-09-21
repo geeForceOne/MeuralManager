@@ -298,7 +298,10 @@ else
             else
             {
                 <div class="preview-body">
-                    <ItemImage Item="_previewItem" CssClass="preview-image" />
+                    <div class="preview-image-wrap">
+                        <ItemImage Item="_previewItem" CssClass="preview-image" />
+                    </div>
+                    <div class="preview-info">
                     <p class="preview-name">@(_previewItem.Name ?? "(untitled)")</p>
                     @if (!string.IsNullOrWhiteSpace(_previewItem.CreatedAt))
                     {
@@ -307,15 +310,20 @@ else
                     <div class="preview-crop-actions">
                         @if (_cropFeatureEnabled)
                         {
-                            <button type="button" class="btn btn-secondary btn-sm btn-icon" disabled="@_busy"
-                                    title="Crop to 16:9 (landscape)" aria-label="Crop to 16:9 landscape"
+                            // The button matching the frame(s) this playlist is installed on is
+                            // highlighted - both stay clickable.
+                            var suggestedAspect = Session.GetCropSuggestion(_selectedPlaylist?.Id).Aspect;
+                            <button type="button" class="btn @(suggestedAspect == CropDialog.CropAspect.Wide ? "btn-primary" : "btn-secondary") btn-sm btn-icon" disabled="@_busy"
+                                    title="@(suggestedAspect == CropDialog.CropAspect.Wide ? "Crop to 16:9 (landscape) - suits this playlist's frames" : "Crop to 16:9 (landscape)")"
+                                    aria-label="Crop to 16:9 landscape"
                                     @onclick="() => CropAndReplacePreviewAsync(CropDialog.CropAspect.Wide)">
                                 <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
                                     <rect x="2" y="5" width="14" height="8" rx="1.2" stroke="currentColor" stroke-width="1.6" />
                                 </svg>
                             </button>
-                            <button type="button" class="btn btn-secondary btn-sm btn-icon" disabled="@_busy"
-                                    title="Crop to 9:16 (portrait)" aria-label="Crop to 9:16 portrait"
+                            <button type="button" class="btn @(suggestedAspect == CropDialog.CropAspect.Tall ? "btn-primary" : "btn-secondary") btn-sm btn-icon" disabled="@_busy"
+                                    title="@(suggestedAspect == CropDialog.CropAspect.Tall ? "Crop to 9:16 (portrait) - suits this playlist's frames" : "Crop to 9:16 (portrait)")"
+                                    aria-label="Crop to 9:16 portrait"
                                     @onclick="() => CropAndReplacePreviewAsync(CropDialog.CropAspect.Tall)">
                                 <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
                                     <rect x="5" y="2" width="8" height="14" rx="1.2" stroke="currentColor" stroke-width="1.6" />
@@ -330,6 +338,7 @@ else
                                 Revert to original
                             </button>
                         }
+                    </div>
                     </div>
                 </div>
             }
@@ -755,7 +764,9 @@ else
             // shown for the preview-pane replace flow, where there's nothing sensible to upload
             // unmodified), plus - once more than one file is left - an "Upload all as-is"
             // shortcut that skips the crop-or-skip prompt for the rest of the batch. Cancelling
-            // a given file's crop just skips that file rather than aborting the batch.
+            // a given file's crop just skips that file rather than aborting the batch. The dialog
+            // opens on the format of the frame(s) this playlist is installed on.
+            var cropAspect = Session.GetCropSuggestion(galleryId).Aspect;
             for (var i = 0; i < files.Count; i++)
             {
                 var file = files[i];
@@ -766,7 +777,7 @@ else
                 CropDialog.CropResult result;
                 try
                 {
-                    result = await _cropDialog.CropAsync(blobUrl, CropDialog.CropAspect.Wide, allowSkip: true, remainingCount: files.Count - i);
+                    result = await _cropDialog.CropAsync(blobUrl, cropAspect, allowSkip: true, remainingCount: files.Count - i);
                 }
                 finally
                 {
