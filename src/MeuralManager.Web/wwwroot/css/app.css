@@ -2270,7 +2270,7 @@ a { color: var(--accent-strong); }
     font-size: 0.78rem;
 }
 
-.immich-playlist-select {
+.basket-playlist-select {
     flex: 1;
     min-width: 0;
     width: auto;
