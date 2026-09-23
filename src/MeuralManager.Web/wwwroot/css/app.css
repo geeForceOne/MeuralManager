@@ -2288,3 +2288,15 @@ a { color: var(--accent-strong); }
 .immich-permissions code {
     color: var(--text);
 }
+
+.homepage-snippet {
+    margin: 0 0 8px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-inset);
+    font-size: 0.82rem;
+    white-space: pre;
+    overflow-x: auto;
+    user-select: all;
+}

@@ -533,6 +533,28 @@ public sealed class MeuralSessionState(
         ReleaseImmichClient();
     }
 
+    // Token for the Homepage dashboard widget (see HomepageEndpoints). Only its hash is kept, so
+    // the plain token exists just long enough to be shown once on the Settings page.
+    public async Task<bool> HasHomepageTokenAsync() =>
+        _cacheStore is not null
+        && await _cacheStore.GetSettingAsync(HomepageEndpoints.TokenHashSettingKey, CancellationToken.None) is not null;
+
+    public async Task<string?> GenerateHomepageTokenAsync()
+    {
+        if (_cacheStore is null)
+            return null;
+
+        var token = RandomNumberGenerator.GetHexString(64, lowercase: true);
+        await _cacheStore.SetSettingAsync(HomepageEndpoints.TokenHashSettingKey, HomepageEndpoints.HashToken(token), CancellationToken.None);
+        return token;
+    }
+
+    public async Task RevokeHomepageTokenAsync()
+    {
+        if (_cacheStore is not null)
+            await _cacheStore.SetSettingAsync(HomepageEndpoints.TokenHashSettingKey, null, CancellationToken.None);
+    }
+
     // Path segment for this account's /immich-proxy/... URLs - see ImmichProxyRegistry. Random,
     // generated once and then kept so thumbnail URLs stay the same across visits and the
     // browser's cache keeps working.

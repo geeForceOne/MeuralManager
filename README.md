@@ -65,6 +65,15 @@ Settings, then enter your server URL and an API key.
 Photos you pick go into an upload basket next to a preview pane. Rename them there (AI suggestions
 included), see what's already in the target playlist, and crop on upload.
 
+## Stats API
+
+A small API that returns your playlist count, image count and last scan time, for dashboards like
+[Homepage](https://gethomepage.dev). Create a token in Settings.
+
+```powershell
+Invoke-RestMethod http://localhost:8080/api/homepage/stats -Headers @{ 'X-API-Key' = '<token>' }
+```
+
 ## With Docker
 
 Using docker compose:
