@@ -62,6 +62,7 @@ app.UseAntiforgery();
 app.MapBackupEndpoints();
 app.MapImageCacheEndpoints();
 app.MapImmichEndpoints();
+app.MapHomepageEndpoints();
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();

@@ -94,6 +94,27 @@ public sealed class PlaylistCacheStore
         return value is null ? null : DateTime.Parse(value).ToUniversalTime();
     }
 
+    // Headline numbers for the Homepage dashboard widget - kept to plain COUNT(*)s over the
+    // cache (every upload, orphans included) since it's polled every few seconds.
+    public async Task<CacheSummary> GetSummaryAsync(CancellationToken ct)
+    {
+        await using var conn = await OpenAsync(ct);
+
+        async Task<object?> ScalarAsync(string sql)
+        {
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = sql;
+            return await cmd.ExecuteScalarAsync(ct);
+        }
+
+        var playlists = (long)(await ScalarAsync("SELECT COUNT(*) FROM Galleries"))!;
+        var images = (long)(await ScalarAsync("SELECT COUNT(*) FROM Items"))!;
+        var lastRefreshed = await ScalarAsync("SELECT Value FROM CacheMeta WHERE Key = 'LastRefreshedUtc'") as string;
+
+        return new CacheSummary(
+            (int)playlists, (int)images, lastRefreshed is null ? null : DateTime.Parse(lastRefreshed).ToUniversalTime());
+    }
+
     public async Task<List<MeuralGallery>> GetGalleriesAsync(CancellationToken ct)
     {
         await using var conn = await OpenAsync(ct);
@@ -641,3 +662,5 @@ public sealed class PlaylistCacheStore
         return conn;
     }
 }
+
+public sealed record CacheSummary(int Playlists, int Images, DateTime? LastRefreshedUtc);
