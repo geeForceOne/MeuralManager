@@ -1,6 +1,8 @@
 @page "/settings"
 @inject UserPreferencesStore Preferences
 @inject MeuralSessionState Session
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
 
 <div class="page-header" data-eyebrow="Preferences">
     <h1>Settings</h1>
@@ -173,6 +175,59 @@
 </div>
 
 <div class="settings-group">
+    <h2>Homepage Widget</h2>
+    <p class="muted setting-description">
+        Show this account's playlist count, image count and last scan time on a
+        <a href="https://gethomepage.dev" target="_blank" rel="noopener">Homepage</a> dashboard, using its
+        <code>customapi</code> widget. The numbers come from the last scan, so polling never touches Meural.
+    </p>
+
+    @if (_homepageToken is not null)
+    {
+        <p class="muted setting-description">
+            Add this to Homepage's environment. <strong>It's only shown now</strong> - just a hash of it is
+            saved, so if you lose it, generate a new one.
+        </p>
+        <pre class="homepage-snippet">@HomepageEnvLine</pre>
+        <div class="immich-settings-actions">
+            <button type="button" class="btn btn-secondary" @onclick="() => CopyAsync(HomepageEnvLine)">Copy</button>
+        </div>
+    }
+    else
+    {
+        <p class="muted setting-description">
+            @(_hasHomepageToken
+                ? "A token is set. Generating a new one stops the old one working."
+                : "No token yet - the widget endpoint rejects every request until you generate one.")
+        </p>
+    }
+
+    <div class="immich-settings-actions">
+        <button type="button" class="btn btn-primary" @onclick="GenerateHomepageTokenAsync">
+            @(_hasHomepageToken ? "Regenerate token" : "Generate token")
+        </button>
+        @if (_hasHomepageToken)
+        {
+            <button type="button" class="btn btn-ghost" @onclick="RevokeHomepageTokenAsync">Revoke token</button>
+        }
+    </div>
+
+    <p class="muted setting-description">
+        Then add this to Homepage's <code>services.yaml</code>. The URLs use the address you're browsing
+        from - if Homepage reaches this app another way (e.g. by container name), change them.
+    </p>
+    <pre class="homepage-snippet">@HomepageYaml</pre>
+    <div class="immich-settings-actions">
+        <button type="button" class="btn btn-secondary" @onclick="() => CopyAsync(HomepageYaml)">Copy</button>
+    </div>
+
+    @if (_homepageStatus is not null)
+    {
+        <p class="muted">@_homepageStatus</p>
+    }
+</div>
+
+<div class="settings-group">
     <h2>AI Naming</h2>
     <p class="muted setting-description">
         On the Playlists page, get an AI-suggested name for an image (handy for uploads with a generic
@@ -268,6 +323,70 @@
     private bool _savingAi;
     private bool _aiSaved;
 
+    private bool _hasHomepageToken;
+    private string? _homepageToken;
+    private string? _homepageStatus;
+
+    private string HomepageEnvLine => $"HOMEPAGE_VAR_MEURAL_KEY={_homepageToken}";
+
+    private string HomepageYaml
+    {
+        get
+        {
+            var baseUrl = Navigation.BaseUri.TrimEnd('/');
+            return $$$"""
+                - MeuralManager:
+                    href: {{{baseUrl}}}
+                    description: Meural Canvas
+                    widget:
+                      type: customapi
+                      url: {{{baseUrl}}}/api/homepage/stats
+                      headers:
+                        X-API-Key: "{{HOMEPAGE_VAR_MEURAL_KEY}}"
+                      mappings:
+                        - field: playlists
+                          label: Playlists
+                          format: number
+                        - field: images
+                          label: Images
+                          format: number
+                        - field: lastScan
+                          label: Last scan
+                          format: relativeDate
+                """;
+        }
+    }
+
+    private async Task GenerateHomepageTokenAsync()
+    {
+        _homepageToken = await Session.GenerateHomepageTokenAsync();
+        _hasHomepageToken = _homepageToken is not null;
+        _homepageStatus = null;
+    }
+
+    private async Task RevokeHomepageTokenAsync()
+    {
+        await Session.RevokeHomepageTokenAsync();
+        _hasHomepageToken = false;
+        _homepageToken = null;
+        _homepageStatus = "Token revoked.";
+    }
+
+    // The clipboard API only exists on HTTPS or localhost - over plain http on the LAN it throws,
+    // which is why the text is also shown selectable.
+    private async Task CopyAsync(string text)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
+            _homepageStatus = "Copied.";
+        }
+        catch (JSException)
+        {
+            _homepageStatus = "Your browser won't allow copying here (it needs HTTPS) - select the text and copy it instead.";
+        }
+    }
+
     // Saved keys that are still in the DB but can't be decrypted any more - their fields load empty,
     // so without this they'd just look like they'd vanished.
     private MeuralSessionState.UnreadableSecrets _unreadable = new(false, false, false);
@@ -289,6 +408,7 @@
         _immichEnabled = prefs.ImmichEnabled;
 
         await RefreshUnreadableAsync();
+        _hasHomepageToken = await Session.HasHomepageTokenAsync();
 
         var immichSettings = await Session.LoadImmichSettingsAsync();
         _immichUrl = immichSettings.ServerUrl ?? "";
