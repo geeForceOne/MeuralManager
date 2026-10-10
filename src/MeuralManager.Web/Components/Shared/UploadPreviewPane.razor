@@ -1,6 +1,7 @@
 @* The preview pane next to an UploadBasketPane: the photo (or, when one was clicked in the basket's
    "already in the playlist" list, that existing Meural image) filling the space, with its details
-   and Add to / Remove from basket pinned below. *@
+   and Add to / Remove from basket pinned below. "Compare" pins the photo as A; every photo
+   previewed after that shows as B next to it (or in its place, in flip mode) until one is kept. *@
 <div class="pane pane-preview">
     <h3 class="pane-preview-title">Preview</h3>
     @if (Basket.PreviewItem is { } item)
@@ -20,6 +21,68 @@
                 {
                     <p class="muted preview-meta">Already in "@playlist.Name"</p>
                 }
+            </div>
+        </div>
+    }
+    else if (Basket.CompareEntry is { } a)
+    {
+        var b = Basket.PreviewEntry;
+        <div class="preview-body">
+            <div class="compare-toolbar">
+                <button type="button" class="btn btn-sm @(_flip ? "btn-ghost" : "btn-secondary")" aria-pressed="@(_flip ? "false" : "true")"
+                        title="Show both photos at once" @onclick="() => _flip = false">Side by side</button>
+                <button type="button" class="btn btn-sm @(_flip ? "btn-secondary" : "btn-ghost")" aria-pressed="@(_flip ? "true" : "false")"
+                        title="Show one photo at a time, in the same spot" @onclick="() => _flip = true">Flip</button>
+                <button type="button" class="btn btn-ghost btn-sm compare-done" @onclick="Basket.EndCompare">Done</button>
+            </div>
+            @if (b is null)
+            {
+                <div class="preview-image-wrap compare-cell">
+                    <img class="preview-image" src="@PreviewUrl(a)" alt="" />
+                    <span class="compare-letter">A</span>
+                </div>
+            }
+            else if (_flip)
+            {
+                @* Both stay loaded, so switching is instant. A button, so Space or Enter switches too. *@
+                <button type="button" class="preview-image-wrap compare-cell compare-flip" title="Click, or press Space, to switch between A and B"
+                        @onclick="() => _showB = !_showB">
+                    <img class="preview-image @(_showB ? "off" : "")" src="@PreviewUrl(a)" alt="" />
+                    <img class="preview-image @(_showB ? "" : "off")" src="@PreviewUrl(b)" alt="" />
+                    <span class="compare-letter">@(_showB ? "B" : "A")</span>
+                </button>
+            }
+            else
+            {
+                <div class="compare-area">
+                    <div class="compare-pair">
+                        <div class="preview-image-wrap compare-cell">
+                            <img class="preview-image" src="@PreviewUrl(a)" alt="" />
+                            <span class="compare-letter">A</span>
+                        </div>
+                        <div class="preview-image-wrap compare-cell">
+                            <img class="preview-image" src="@PreviewUrl(b)" alt="" />
+                            <span class="compare-letter">B</span>
+                        </div>
+                    </div>
+                </div>
+            }
+            <div class="preview-info">
+                <p class="preview-meta"><strong>A</strong> @(a.SourceName)@(Basket.Contains(a.Id) ? " · in basket" : "")</p>
+                @if (b is null)
+                {
+                    <p class="muted preview-meta">Click another photo to compare it with this one.</p>
+                }
+                else
+                {
+                    <p class="preview-meta"><strong>B</strong> @(b.SourceName)@(Basket.Contains(b.Id) ? " · in basket" : "")</p>
+                }
+                <div class="preview-crop-actions">
+                    <button type="button" class="btn btn-primary btn-sm" disabled="@(b is null || Basket.Busy)"
+                            title="Put A in the basket and compare it with the next photo" @onclick="() => Basket.KeepCompared(keepB: false)">Keep A</button>
+                    <button type="button" class="btn btn-primary btn-sm" disabled="@(b is null || Basket.Busy)"
+                            title="Put B in the basket; it becomes A for the next photo" @onclick="() => Basket.KeepCompared(keepB: true)">Keep B</button>
+                </div>
             </div>
         </div>
     }
@@ -52,6 +115,8 @@
                     {
                         <button type="button" class="btn btn-primary btn-sm" disabled="@Basket.Busy" @onclick="() => Basket.SetSelected(entry, true)">Add to basket</button>
                     }
+                    <button type="button" class="btn btn-ghost btn-sm" title="Pin this photo as A, then click others to compare them with it"
+                            @onclick="Basket.StartCompare">Compare</button>
                 </div>
             </div>
         </div>
@@ -67,4 +132,20 @@
     [Parameter] public HashSet<string> UploadedIds { get; set; } = [];
 
     [Parameter] public string EmptyText { get; set; } = "Click a photo to preview it";
+
+    // How a comparison is shown: both photos at once, or one at a time in the same spot.
+    private bool _flip;
+    private bool _showB;
+    private string? _lastChallengerId;
+
+    protected override void OnParametersSet()
+    {
+        // A newly clicked challenger is what flip mode shows first.
+        var challengerId = Basket.CompareEntry is null ? null : Basket.PreviewEntry?.Id;
+        if (challengerId != _lastChallengerId)
+        {
+            _lastChallengerId = challengerId;
+            _showB = challengerId is not null;
+        }
+    }
 }

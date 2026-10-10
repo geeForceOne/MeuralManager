@@ -542,7 +542,7 @@ else
         {
             var items = await Client.GetGalleryItemsAsync(galleryId, ct: ct);
 
-            // A newer SelectAsync call may have cancelled this token but let a response that was
+            // A newer SelectAsync call may have canceled this token but let a response that was
             // already in flight land anyway - don't let a slow, superseded reload apply its
             // (wrong-playlist) results on top of whatever's now selected.
             if (ct.IsCancellationRequested)
@@ -563,7 +563,7 @@ else
         }
         finally
         {
-            // Same reasoning as above - a cancelled, superseded reload must not clear the loading
+            // Same reasoning as above - a canceled, superseded reload must not clear the loading
             // flag out from under the newer request that's still legitimately in progress.
             if (!ct.IsCancellationRequested)
                 _loadingItems = false;
@@ -763,7 +763,7 @@ else
             // needs no server round trip. allowSkip offers an "Upload as-is" button here (not
             // shown for the preview-pane replace flow, where there's nothing sensible to upload
             // unmodified), plus - once more than one file is left - an "Upload all as-is"
-            // shortcut that skips the crop-or-skip prompt for the rest of the batch. Cancelling
+            // shortcut that skips the crop-or-skip prompt for the rest of the batch. Canceling
             // a given file's crop just skips that file rather than aborting the batch. The dialog
             // opens on the format of the frame(s) this playlist is installed on.
             var cropAspect = Session.GetCropSuggestion(galleryId).Aspect;
@@ -784,7 +784,7 @@ else
                     await JS.InvokeVoidAsync("meuralCropper.revokeBlobUrl", blobUrl);
                 }
 
-                if (result.Outcome == CropDialog.CropOutcome.Cancelled)
+                if (result.Outcome == CropDialog.CropOutcome.Canceled)
                     continue;
 
                 if (result.Outcome == CropDialog.CropOutcome.SkippedAll)
@@ -1490,15 +1490,15 @@ else
 
     private void Cancel() => _cts?.Cancel();
 
-    // Distinguishes the user explicitly clicking Cancel (cts.Token gets cancelled) from the
+    // Distinguishes the user explicitly clicking Cancel (cts.Token gets canceled) from the
     // HttpClient request timeout firing on its own (an OperationCanceledException that reports
-    // as cancelled without our token ever being cancelled) - the latter is a real failure that
-    // deserves a toast, not a silent "Cancelled." nobody sees.
+    // as canceled without our token ever being canceled) - the latter is a real failure that
+    // deserves a toast, not a silent "Canceled." nobody sees.
     private void HandleCancellation(CancellationTokenSource cts, string operationLabel)
     {
         if (cts.Token.IsCancellationRequested)
         {
-            _log.Append("Cancelled.");
+            _log.Append("Canceled.");
             return;
         }
 

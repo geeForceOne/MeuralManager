@@ -323,6 +323,59 @@ a { color: var(--accent-strong); }
 .brand-mark svg {
     width: 1.35em;
     height: 1.35em;
+    overflow: visible;
+}
+
+/* The logo's three motions. wwwroot/js/brand-motion.js picks one and adds its play-* class to the
+   svg; each animates exactly one element, and the class comes off again when that animation ends. */
+.brand-mark .bm-frame {
+    transform-origin: 12px 12px;
+}
+
+.brand-mark svg.play-swap .bm-m {
+    animation: bm-swap 1100ms both;
+}
+
+.brand-mark svg.play-draw .bm-m {
+    stroke-dasharray: 1 2;
+    animation: bm-draw 1500ms both;
+}
+
+.brand-mark svg.play-straighten .bm-frame {
+    animation: bm-straighten 1400ms both;
+}
+
+/* Swap: the picture slides out behind the mat and the next one slides in. */
+@keyframes bm-swap {
+    0%    { transform: translateX(0);     animation-timing-function: cubic-bezier(.6, 0, .9, .4); }
+    42%   { transform: translateX(-13px); animation-timing-function: step-end; }
+    42.1% { transform: translateX(13px);  animation-timing-function: cubic-bezier(.1, .6, .3, 1); }
+    100%  { transform: translateX(0); }
+}
+
+/* Draw: the M fades away and is painted back in one stroke. */
+@keyframes bm-draw {
+    0%   { opacity: 1; stroke-dashoffset: 0; }
+    13%  { opacity: 0; stroke-dashoffset: 0; animation-timing-function: step-end; }
+    14%  { opacity: 1; stroke-dashoffset: 1.05; animation-timing-function: cubic-bezier(.45, 0, .3, 1); }
+    100% { opacity: 1; stroke-dashoffset: 0; }
+}
+
+/* Straighten: the frame slips crooked, hangs there, and is nudged level again. */
+@keyframes bm-straighten {
+    0%   { transform: rotate(0);      animation-timing-function: cubic-bezier(.3, 0, .2, 1.4); }
+    22%  { transform: rotate(-9deg);  animation-timing-function: linear; }
+    48%  { transform: rotate(-9deg);  animation-timing-function: cubic-bezier(.4, 0, .2, 1); }
+    72%  { transform: rotate(2.5deg); animation-timing-function: ease-in-out; }
+    87%  { transform: rotate(-1deg);  animation-timing-function: ease-in-out; }
+    100% { transform: rotate(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .brand-mark .bm-m,
+    .brand-mark .bm-frame {
+        animation: none !important;
+    }
 }
 
 .brand-name {
@@ -665,6 +718,25 @@ a { color: var(--accent-strong); }
 
 .info-panel li {
     margin-bottom: 4px;
+}
+
+/* The release notes are rendered from CHANGELOG.md: a version per h2, then New / Improved / Fixed. */
+.release-notes h2 {
+    margin: 26px 0 8px;
+    font-size: 1.05rem;
+}
+
+.release-notes h2:first-child {
+    margin-top: 0;
+}
+
+.release-notes h3 {
+    margin: 10px 0 4px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-muted);
 }
 
 /* ---------- Tables ---------- */
@@ -1325,6 +1397,92 @@ a { color: var(--accent-strong); }
     border-color: var(--accent-strong);
 }
 
+/* A/B comparison in the preview pane (UploadPreviewPane): photo A pinned, each photo clicked next
+   as B. Side by side follows the pane's shape - stacked while it's taller than wide, next to each
+   other once it's wider - since that's what leaves each picture the most room. */
+.compare-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.compare-done {
+    margin-left: auto;
+}
+
+.compare-area {
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    container-type: size;
+}
+
+.compare-pair {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+@container (min-aspect-ratio: 1 / 1) {
+    .compare-pair {
+        flex-direction: row;
+    }
+}
+
+.compare-cell {
+    position: relative;
+    min-width: 0;
+}
+
+.compare-letter,
+.photo-letter {
+    position: absolute;
+    top: 8px;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #fff;
+    background: rgba(0, 0, 0, 0.65);
+    border-radius: 50%;
+    pointer-events: none;
+}
+
+.compare-letter {
+    left: 8px;
+}
+
+/* On a photo tile the top-left corner is the basket check, so the letter goes top right. */
+.photo-letter {
+    right: 8px;
+}
+
+/* Flip mode: both pictures sit in the same spot and a click (or Space) switches between them. */
+.compare-flip {
+    appearance: none;
+    border: 0;
+    padding: 0;
+    width: 100%;
+    font: inherit;
+    cursor: pointer;
+}
+
+.compare-flip .preview-image {
+    position: absolute;
+    inset: 0;
+}
+
+.compare-flip .preview-image.off {
+    visibility: hidden;
+}
+
 /* ---------- Dropdown ---------- */
 
 .dropdown {
@@ -1499,8 +1657,12 @@ a { color: var(--accent-strong); }
     text-align: center;
 }
 
-.scan-lock-card .spinner {
-    margin: 0 auto 16px;
+/* The logo stands in for a spinner here; wwwroot/js/brand-motion.js keeps it moving. */
+.scan-lock-card .brand-mark {
+    display: flex;
+    justify-content: center;
+    font-size: 2.2rem;
+    margin-bottom: 16px;
 }
 
 .scan-lock-card .log-panel {

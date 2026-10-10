@@ -1,6 +1,4 @@
 @using Microsoft.AspNetCore.Components.Web
-@using MeuralManager.Web.Services
-@inject StaticAssetVersion AssetVersion
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -8,15 +6,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
     <title>Meural Manager</title>
     <base href="/" />
-    <link rel="stylesheet" href="css/app.css?v=@AssetVersion.Get("css/app.css")" />
-    <link rel="icon" type="image/svg+xml" href="favicon.svg?v=@AssetVersion.Get("favicon.svg")" />
+    @* Assets[...] resolves each file to its fingerprinted URL (see MapStaticAssets in Program.cs),
+       so a new deployment never leaves a browser on a stale cached copy. *@
+    <link rel="stylesheet" href="@Assets["css/app.css"]" />
+    <link rel="icon" type="image/svg+xml" href="@Assets["favicon.svg"]" />
+    <ImportMap />
     <HeadOutlet @rendermode="new InteractiveServerRenderMode(prerender: false)" />
 </head>
 <body>
     <Routes @rendermode="new InteractiveServerRenderMode(prerender: false)" />
-    <script src="_framework/blazor.web.js"></script>
-    <script src="js/splitter.js?v=@AssetVersion.Get("js/splitter.js")"></script>
-    <script src="js/cropper.js?v=@AssetVersion.Get("js/cropper.js")"></script>
-    <script src="js/infinite-scroll.js?v=@AssetVersion.Get("js/infinite-scroll.js")"></script>
+    <script src="@Assets["_framework/blazor.web.js"]"></script>
+    <script src="@Assets["js/splitter.js"]"></script>
+    <script src="@Assets["js/cropper.js"]"></script>
+    <script src="@Assets["js/infinite-scroll.js"]"></script>
+    <script src="@Assets["js/brand-motion.js"]"></script>
 </body>
 </html>

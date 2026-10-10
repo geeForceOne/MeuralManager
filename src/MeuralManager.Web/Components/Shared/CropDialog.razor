@@ -55,7 +55,7 @@
 
 @code {
     public enum CropAspect { Wide, Tall }
-    public enum CropOutcome { Applied, Skipped, SkippedAll, Cancelled }
+    public enum CropOutcome { Applied, Skipped, SkippedAll, Canceled }
     public readonly record struct CropResult(CropOutcome Outcome, string? CroppedPath);
 
     private bool _visible;
@@ -171,7 +171,7 @@
     private async Task Cancel()
     {
         await DisposeJsStateAsync();
-        Resolve(new CropResult(CropOutcome.Cancelled, null));
+        Resolve(new CropResult(CropOutcome.Canceled, null));
     }
 
     // Disconnects the ResizeObserver meuralCropper.init sets up - not strictly required (the

@@ -23,7 +23,6 @@ builder.Services.AddScoped<WebSessionStore>();
 builder.Services.AddScoped<UserPreferencesStore>();
 builder.Services.AddScoped<MeuralSessionState>();
 builder.Services.AddSingleton<BackupArchiveService>();
-builder.Services.AddSingleton<StaticAssetVersion>();
 builder.Services.AddSingleton<ImageCacheManager>();
 builder.Services.AddSingleton<ImmichProxyRegistry>();
 builder.Services.AddHostedService<BackupCleanupService>();
@@ -35,29 +34,11 @@ if (!app.Environment.IsDevelopment())
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
 }
 
-// In Development, disable caching for static files outright - the "?v=" query string on
-// css/app.css and js/splitter.js (see App.razor / StaticAssetVersion) only changes when a
-// file's mtime changes, which isn't a reliable enough signal moment-to-moment while iterating
-// (e.g. editing under a debugger without a full rebuild), and having to hard-refresh to see a
-// JS/CSS change is exactly the friction this exists to remove.
-if (app.Environment.IsDevelopment())
-{
-    app.UseStaticFiles(new StaticFileOptions
-    {
-        OnPrepareResponse = ctx =>
-        {
-            ctx.Context.Response.Headers.CacheControl = "no-cache, no-store, must-revalidate";
-            ctx.Context.Response.Headers.Pragma = "no-cache";
-            ctx.Context.Response.Headers.Expires = "0";
-        }
-    });
-}
-else
-{
-    app.UseStaticFiles();
-}
-
 app.UseAntiforgery();
+
+// Serves wwwroot with content-fingerprinted URLs (App.razor references them through Assets[...]),
+// so a redeploy can't leave a browser on a stale CSS/JS file.
+app.MapStaticAssets();
 
 app.MapBackupEndpoints();
 app.MapImageCacheEndpoints();

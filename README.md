@@ -65,6 +65,9 @@ Settings, then enter your server URL and an API key.
 Photos you pick go into an upload basket next to a preview pane. Rename them there (AI suggestions
 included), see what's already in the target playlist, and crop on upload.
 
+Can't decide between two similar shots? "Compare" pins one photo and shows every photo you click
+next beside it (or in the same spot, to flip back and forth), then keeps the one you pick.
+
 ## Stats API
 
 A small API that returns your playlist count, image count and last scan time, for dashboards like

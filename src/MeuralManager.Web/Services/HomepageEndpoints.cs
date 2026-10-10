@@ -7,7 +7,7 @@ namespace MeuralManager.Web.Services;
 // Stats for a gethomepage.dev "customapi" widget. Homepage polls without anyone signed in, so
 // instead of a session this takes a per-account token (generated on the Settings page) in an
 // X-API-Key header and finds the account whose settings table holds that token's hash. Only the
-// hash is stored - the endpoint never needs the token back, just to recognise it - so a copy of
+// hash is stored - the endpoint never needs the token back, just to recognize it - so a copy of
 // the DB can't be used to call it, and losing the Data Protection keys doesn't break it.
 public static class HomepageEndpoints
 {
