@@ -148,7 +148,7 @@ else
         }
 
         <ImmichPhotoGrid Photos="_assets" ProxyToken="@_proxyToken" Selected="_basket.SelectedIds" Uploaded="_uploadedIds"
-                         Previewing="@_basket.PreviewEntry?.Id"
+                         Previewing="@_basket.PreviewEntry?.Id" Comparing="@_basket.CompareEntry?.Id"
                          Grouped="@(_tab != Tab.Photos || string.IsNullOrWhiteSpace(_query))"
                          HasMore="@(_nextPage is not null)" Loading="_loadingAssets"
                          OnPreview="PreviewAsset" OnToggle="OnTileToggle" OnToggleDay="OnDayToggle"
@@ -337,7 +337,7 @@ else
     }
 
     // Loads the next page of whatever CurrentFilter describes - or, with reset, starts over from
-    // page one, cancelling any load still in flight so a slow, superseded response can't land on
+    // page one, canceling any load still in flight so a slow, superseded response can't land on
     // top of the new view.
     private async Task LoadAssetsAsync(bool reset)
     {
@@ -385,7 +385,7 @@ else
         }
         finally
         {
-            // A cancelled load must not clear the flag out from under the newer one that replaced it.
+            // A canceled load must not clear the flag out from under the newer one that replaced it.
             if (!cts.IsCancellationRequested)
             {
                 _loadingAssets = false;
@@ -602,13 +602,13 @@ else
         var asset = (ImmichAsset)entry.Source;
 
         // Same crop dialog and skip/skip-all choices as uploading a local file from the Playlists
-        // page. Cancelling one photo's crop just leaves that photo out.
+        // page. Canceling one photo's crop just leaves that photo out.
         if (context.Cropping)
         {
             var result = await _cropDialog.CropAsync(
                 ProxyImageUrl(asset), context.CropAspect, allowSkip: true, remainingCount: context.Remaining);
 
-            if (result.Outcome == CropDialog.CropOutcome.Cancelled)
+            if (result.Outcome == CropDialog.CropOutcome.Canceled)
             {
                 _log.Append($"Skipped \"{entry.SourceName}\".");
                 return null;

@@ -57,7 +57,7 @@ public sealed class BackupArchiveService
 
     // Run periodically by BackupCleanupService - a Docker container is long-lived, so nothing
     // else would ever remove finished zips (once downloaded, the browser has its own copy) or
-    // working directories left behind by an operation that was cancelled or crashed mid-backup.
+    // working directories left behind by an operation that was canceled or crashed mid-backup.
     public void PurgeOlderThan(TimeSpan maxAge)
     {
         var cutoffUtc = DateTime.UtcNow - maxAge;

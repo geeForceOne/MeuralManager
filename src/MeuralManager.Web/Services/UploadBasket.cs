@@ -33,7 +33,7 @@ public sealed class PrepareContext
 }
 
 // Turns one basket entry into a file ready to upload (downloading it, and cropping it if asked to),
-// named after baseName. Return null to leave the entry out (e.g. its crop was cancelled); throw to
+// named after baseName. Return null to leave the entry out (e.g. its crop was canceled); throw to
 // report it as failed.
 public delegate Task<PreparedUpload?> PrepareUploadAsync(
     BasketEntry entry, string baseName, PrepareContext context, CancellationToken ct);
@@ -77,7 +77,7 @@ public sealed class UploadBasket : IDisposable
 
     // Fired whenever the basket's state changes. The grid, the basket pane and the preview pane are
     // sibling components, and a click in one only re-renders that one - so the page listens to this
-    // and re-renders them all (a ✕ in the basket has to clear the tick on the photo grid, and so on).
+    // and re-renders them all (a ✕ in the basket has to clear the check mark on the photo grid, and so on).
     // Also covers changes outside any UI event, like AI names arriving one by one.
     public event Action? Changed;
 
@@ -130,6 +130,10 @@ public sealed class UploadBasket : IDisposable
 
     public void Preview(BasketEntry entry)
     {
+        // While comparing, A stays put and the clicked photo becomes B; clicking A again changes nothing.
+        if (CompareEntry?.Id == entry.Id)
+            return;
+
         PreviewEntry = entry;
         PreviewItem = null;
         Changed?.Invoke();
@@ -139,6 +143,53 @@ public sealed class UploadBasket : IDisposable
     {
         PreviewItem = item;
         PreviewEntry = null;
+        CompareEntry = null;
+        Changed?.Invoke();
+    }
+
+    // ---------- compare ----------
+
+    // The photo pinned as "A" for an A/B comparison, or null when not comparing. While it's set,
+    // PreviewEntry is "B" - the challenger, replaced by every photo previewed next (null until one is).
+    public BasketEntry? CompareEntry { get; private set; }
+
+    // Pins the previewed photo as A; the next photo previewed is compared against it.
+    public void StartCompare()
+    {
+        if (PreviewEntry is null)
+            return;
+
+        CompareEntry = PreviewEntry;
+        PreviewEntry = null;
+        Changed?.Invoke();
+    }
+
+    // Decides the pair: the winner goes into the basket (and the loser out of it, if it was in)
+    // and stays pinned as A, ready for the next challenger.
+    public void KeepCompared(bool keepB)
+    {
+        if (CompareEntry is not { } a || PreviewEntry is not { } b)
+            return;
+
+        var (winner, loser) = keepB ? (b, a) : (a, b);
+        if (_selectedIds.Remove(loser.Id))
+        {
+            _entries.RemoveAll(e => e.Id == loser.Id);
+            _names.Remove(loser.Id);
+        }
+        if (_selectedIds.Add(winner.Id))
+            _entries.Add(winner);
+
+        CompareEntry = winner;
+        PreviewEntry = null;
+        Changed?.Invoke();
+    }
+
+    // Back to the normal single preview, showing whichever photo was looked at last.
+    public void EndCompare()
+    {
+        PreviewEntry ??= CompareEntry;
+        CompareEntry = null;
         Changed?.Invoke();
     }
 
@@ -513,12 +564,12 @@ public sealed class UploadBasket : IDisposable
         (_session.AllItemsCache ?? []).Where(i => i.Id.HasValue).Select(i => i.Id!.Value).ToHashSet();
 
     // Distinguishes the user clicking Cancel from an HttpClient timeout firing on its own - the
-    // latter is a real failure that deserves a toast, not a silent "Cancelled." nobody sees.
+    // latter is a real failure that deserves a toast, not a silent "Canceled." nobody sees.
     private void HandleCancellation(CancellationTokenSource cts, string operation)
     {
         if (cts.Token.IsCancellationRequested)
         {
-            _log.Append("Cancelled.");
+            _log.Append("Canceled.");
             return;
         }
 

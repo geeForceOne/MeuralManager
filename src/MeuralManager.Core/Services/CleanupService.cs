@@ -44,7 +44,7 @@ public static class CleanupService
             // A real user-initiated cancel (ct.IsCancellationRequested) should stop the whole
             // batch, same as any other cancellation. But a single slow request timing out
             // (MeuralApiClient's HttpClient) throws the same OperationCanceledException without
-            // ct itself being cancelled - that should only fail this one item and continue,
+            // ct itself being canceled - that should only fail this one item and continue,
             // not abort every remaining item in the batch.
             catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
             {
@@ -78,7 +78,7 @@ public static class CleanupService
             // A real user-initiated cancel (ct.IsCancellationRequested) should stop the whole
             // batch, same as any other cancellation. But a single slow request timing out
             // (MeuralApiClient's HttpClient) throws the same OperationCanceledException without
-            // ct itself being cancelled - that should only fail this one item and continue,
+            // ct itself being canceled - that should only fail this one item and continue,
             // not abort every remaining item in the batch.
             catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
             {

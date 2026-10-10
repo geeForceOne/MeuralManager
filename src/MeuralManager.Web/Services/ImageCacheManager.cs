@@ -78,7 +78,7 @@ public sealed class ImageCacheManager : IDisposable
 
     // Starts (or restarts) a background pass that ensures every given item is cached, skipping
     // anything already on disk. Safe to call after every scan - a run already in progress is
-    // cancelled in favor of the new (presumably more current) item list.
+    // canceled in favor of the new (presumably more current) item list.
     public void QueueWarmup(string email, IReadOnlyList<MeuralItem> items)
     {
         if (!_accounts.TryGetValue(email, out var state))

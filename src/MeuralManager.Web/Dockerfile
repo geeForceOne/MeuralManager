@@ -10,6 +10,8 @@ RUN dotnet restore src/MeuralManager.Web/MeuralManager.Web.csproj
 
 COPY src/MeuralManager.Core/ src/MeuralManager.Core/
 COPY src/MeuralManager.Web/ src/MeuralManager.Web/
+# Embedded into the app as the release notes page (see the .csproj).
+COPY CHANGELOG.md ./
 # No --no-restore here: the earlier restore only saw the .csproj (for layer caching), which
 # leaves a stale static-web-assets manifest that omits Blazor's own framework JS
 # (wwwroot/_framework/blazor.web.js) once the real source lands. Restoring again against the

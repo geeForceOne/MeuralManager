@@ -34,7 +34,7 @@
         <ul class="basket-list">
             @foreach (var entry in Basket.Entries)
             {
-                <li class="basket-item @(Basket.PreviewEntry?.Id == entry.Id ? "previewing" : "")" @key="entry.Id" @onclick="() => Basket.Preview(entry)">
+                <li class="basket-item @(Basket.PreviewEntry?.Id == entry.Id || Basket.CompareEntry?.Id == entry.Id ? "previewing" : "")" @key="entry.Id" @onclick="() => Basket.Preview(entry)">
                     <img class="basket-thumb" src="@entry.ThumbUrl" loading="lazy" alt="" />
                     <div class="basket-item-body">
                         <input class="text-input basket-name" value="@Basket.NameFor(entry)" disabled="@Basket.Busy"

@@ -30,7 +30,8 @@
 @code {
     [Parameter, EditorRequired] public ActivityLog Log { get; set; } = null!;
 
-    private bool _collapsed;
+    // Starts collapsed everywhere, and only the user's click opens it - new entries never do.
+    private bool _collapsed = true;
 
     protected override void OnInitialized() => Log.Changed += HandleChanged;
 

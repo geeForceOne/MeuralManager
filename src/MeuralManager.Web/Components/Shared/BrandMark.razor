@@ -1,9 +1,28 @@
 @* The Meural Manager mark: a picture frame (with a thin mat line inside) around a bold "M". Sized by
-   the surrounding font-size (see .brand-mark in app.css) and coloured by currentColor. *@
+   the surrounding font-size (see .brand-mark in app.css) and colored by currentColor.
+   wwwroot/js/brand-motion.js animates it: once when the sidebar or sign-in logo is hovered or
+   focused, once when a PlayOnLoad logo appears, and in a loop while Busy. The script only adds a
+   class to the svg, which Blazor doesn't render, so re-renders don't disturb a motion. *@
 <span class="brand-mark" aria-hidden="true">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <rect x="2.75" y="2.75" width="18.5" height="18.5" rx="3.5" />
-        <rect x="5.75" y="5.75" width="12.5" height="12.5" rx="1.2" stroke-width="1.1" opacity="0.5" />
-        <path d="M8 16V8.2l4 4.6 4-4.6V16" />
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
+         data-motion="@(Busy ? "loop" : PlayOnLoad ? "once" : null)">
+        @* The M is clipped to the mat, so the "swap" motion can slide it out behind the frame. *@
+        <defs><clipPath id="@_clipId"><rect x="5.75" y="5.75" width="12.5" height="12.5" rx="1.2" /></clipPath></defs>
+        <g class="bm-frame">
+            <rect x="2.75" y="2.75" width="18.5" height="18.5" rx="3.5" />
+            <rect x="5.75" y="5.75" width="12.5" height="12.5" rx="1.2" stroke-width="1.1" opacity="0.5" />
+            <g clip-path="url(#@_clipId)"><path class="bm-m" pathLength="1" d="M8 16V8.2l4 4.6 4-4.6V16" /></g>
+        </g>
     </svg>
 </span>
+
+@code {
+    // Several marks can be on screen at once (sidebar plus scan overlay), and ids must be unique.
+    private readonly string _clipId = "bm-clip-" + Guid.NewGuid().ToString("N")[..8];
+
+    // Loops the motions, for a busy indicator.
+    [Parameter] public bool Busy { get; set; }
+
+    // Plays one motion shortly after the logo appears, for the sign-in screen.
+    [Parameter] public bool PlayOnLoad { get; set; }
+}
