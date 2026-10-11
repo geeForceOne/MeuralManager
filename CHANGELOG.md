@@ -1,5 +1,15 @@
 # Release notes
 
+## 1.13.0 - 2026-10-11
+
+### New
+
+- The logo has a new motion: every so often the M slides away and The Scream hangs in the frame for a moment. It replaces the one where the frame slipped crooked.
+
+### Improved
+
+- The app now uses Meural's bronze as its color, and the logo shows Meural's M.
+
 ## 1.12.0 - 2026-10-10
 
 ### New

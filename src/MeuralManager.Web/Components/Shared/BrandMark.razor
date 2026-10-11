@@ -1,17 +1,82 @@
-@* The Meural Manager mark: a picture frame (with a thin mat line inside) around a bold "M". Sized by
-   the surrounding font-size (see .brand-mark in app.css) and colored by currentColor.
-   wwwroot/js/brand-motion.js animates it: once when the sidebar or sign-in logo is hovered or
-   focused, once when a PlayOnLoad logo appears, and in a loop while Busy. The script only adds a
-   class to the svg, which Blazor doesn't render, so re-renders don't disturb a motion. *@
-<span class="brand-mark" aria-hidden="true">
+@* The Meural Manager mark: a picture frame (with a thin mat line inside) around Meural's "M". Sized by
+   the surrounding font-size (see .brand-mark in app.css) and colored by currentColor. Compact leaves
+   the mat line out and lets the M fill the frame, for where the mark is shown small.
+   wwwroot/js/brand-motion.js animates it: once when the sign-in or Dashboard logo is hovered or
+   focused, once when a PlayOnLoad logo appears, and in a loop while Busy; the sidebar's stays
+   still. The script only adds a class to the svg, which Blazor doesn't render, so re-renders don't
+   disturb a motion. *@
+<span class="brand-mark @(Compact ? "compact" : null)" aria-hidden="true">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
          data-motion="@(Busy ? "loop" : PlayOnLoad ? "once" : null)">
-        @* The M is clipped to the mat, so the "swap" motion can slide it out behind the frame. *@
-        <defs><clipPath id="@_clipId"><rect x="5.75" y="5.75" width="12.5" height="12.5" rx="1.2" /></clipPath></defs>
+        @* What's in the frame is clipped to the mat (or, without one, to the frame's inner edge), so the
+           motions can slide it out behind the frame. *@
+        <defs><clipPath id="@_clipId"><rect x="@Inset" y="@Inset" width="@Opening" height="@Opening" rx="@(Compact ? "2.6" : "1.2")" /></clipPath></defs>
         <g class="bm-frame">
             <rect x="2.75" y="2.75" width="18.5" height="18.5" rx="3.5" />
-            <rect x="5.75" y="5.75" width="12.5" height="12.5" rx="1.2" stroke-width="1.1" opacity="0.5" />
-            <g clip-path="url(#@_clipId)"><path class="bm-m" pathLength="1" d="M8 16V8.2l4 4.6 4-4.6V16" /></g>
+            @if (!Compact)
+            {
+                <rect x="5.75" y="5.75" width="12.5" height="12.5" rx="1.2" stroke-width="1.1" opacity="0.5" />
+            }
+            <g clip-path="url(#@_clipId)">
+                @* The M is Meural's own mark, a filled shape drawn on an 80-unit canvas and scaled to sit
+                   centered in the opening. The motions transform the group, since a CSS transform on the
+                   path itself would replace this scaling.
+                   The M shows through a mask so the "draw" motion can paint it in: a wide pen line
+                   that runs through the middle of the shape, starting in the little loop at the bottom,
+                   going around it and on through both lobes back to where it began. At rest a plain
+                   white rect lets the whole M through, so the pen line only has to be roughly right. The
+                   mask sits on a group around the path: on the path itself it would be measured in the
+                   path's own scaled-down units. *@
+                <g class="bm-m" stroke="none" fill="currentColor">
+                    <mask id="@_penId" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24">
+                        <rect class="bm-pen-all" width="24" height="24" fill="#fff" />
+                        <path class="bm-pen" transform="@MTransform" pathLength="1" fill="none" stroke="#fff" stroke-width="13" d="M50.5 67.6C54.5 64.6 56.8 60 56.8 54.3C56.8 48 53 45.1 49 45.1C44 45.1 40.4 50 40.4 54.7C40.4 61.5 45.5 66 50.5 67.6C52 68 53 67.8 54 67.6C66 65 76 46 76 32C76 20.5 70.5 14.8 63.2 14.8C52.5 14.8 50 28.9 41.5 28.9C31 28.9 34 8.5 18.7 8.5C9 8.5 3.6 18 3.6 30.5C3.6 44 13 71.3 36.5 71.3C43 71.3 47.5 69.8 50.5 67.6" />
+                    </mask>
+                    <g mask="url(#@_penId)"><path transform="@MTransform" fill-rule="evenodd" d="M53.68 66.26C53.68 66.26 59.23 61.66 59.23 54.15C59.23 45.48 53.22 43.56 49.02 43.56C43.26 43.56 38.56 49.14 38.56 54.54C38.56 64.41 46.35 67.46 46.35 67.46C46.35 67.46 44.2 69.66 36.01 69.66C15.25 69.66 7.19 43.12 7.19 30.04C7.19 16.96 12.11 9.94 18.66 9.94C30.08 9.94 25.11 30.56 41.33 30.56C51.13 30.56 54.4 16.44 63.1 16.44C70.51 16.44 72.12 24.33 72.12 31.93C72.12 45.04 66.19 66.26 53.68 66.26M48.87 65.71C47.64 65.71 42.18 62.17 42.18 54.95C42.18 49.4 45.5 46.6 49.06 46.6C53.67 46.6 54.4 51.82 54.4 54.42C54.4 61.88 49.04 65.71 48.87 65.71M63.18 13.25C52.44 13.25 49.34 27.18 41.7 27.18C31.75 27.18 36.23 7.12 18.72 7.12C7.13 7.12 0 18.11 0 31.12C0 44.49 10.06 72.88 37.15 72.88C45.67 72.88 50.96 68.77 50.96 68.77C51.72 68.89 52.75 68.96 53.83 68.96C66.7 68.96 80 50.3 80 32.26C80 16.75 69.33 13.25 63.18 13.25" /></g>
+                </g>
+                @* The Scream, which the "scream" motion slides in for a moment. It's painted in grays
+                   inside a mask, on a 100x100 canvas scaled to the opening: white shows the logo color at
+                   full strength, black none of it. app.css flips the grays on light surfaces. *@
+                <g class="bm-pic" stroke="none" fill="currentColor">
+                    <g transform="translate(@Inset @Inset) scale(@(Compact ? ".167" : ".125"))">
+                        <mask id="@_maskId" maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="100">
+                            <g class="bm-pic-paint" fill="none">
+                                <rect width="100" height="100" fill="#5e5e5e" />
+                                @* The sky in wavy bands. *@
+                                <rect width="100" height="40" fill="#8c8c8c" />
+                                <path stroke="#ececec" stroke-width="5" d="M-5 7C12 1 28 12 48 7S84 2 105 8" />
+                                <path stroke="#d4d4d4" stroke-width="4.2" d="M-5 19C15 12 32 24 55 18S88 13 105 20" />
+                                <path stroke="#b6b6b6" stroke-width="3.6" d="M-5 30C18 24 36 34 58 29S90 26 105 31" />
+                                @* The fjord: light water around dark hills. *@
+                                <path stroke="#9c9c9c" stroke-width="3" d="M30 45C48 40 70 49 100 43" />
+                                <path fill="#242424" d="M50 52C64 45 80 56 100 48V66C84 70 66 59 50 63Z" />
+                                <path stroke="#7c7c7c" stroke-width="2.4" d="M56 70C70 66 84 74 100 70" />
+                                @* The bridge: the deck with its planks, and the railing running off to the left. *@
+                                <path fill="#444" d="M0 42L100 92V100H0Z" />
+                                <path stroke="#6e6e6e" stroke-width="1.4" d="M0 48L64 100M0 55L38 100M0 64L18 100" />
+                                <path stroke="#cfcfcf" stroke-width="2.8" d="M0 41L100 91" />
+                                <path stroke="#9a9a9a" stroke-width="1.8" d="M0 46.5L100 99" />
+                                @* The two figures walking away. *@
+                                <rect x="5" y="26" width="3.4" height="16" rx="1.6" fill="#000" />
+                                <rect x="10.6" y="27.6" width="3.2" height="14.4" rx="1.5" fill="#000" />
+                                @* The screamer, drawn small and scaled up to fill the foreground. *@
+                                <g transform="translate(50 60) scale(1.3) translate(-50 -57)">
+                                    <path fill="#000" d="M36 70C29 78 33 90 28 112H72C67 90 71 78 64 70C60 77 40 77 36 70Z" />
+                                    <path fill="#d6d6d6" d="M36 49C32.5 51 32 59 34.5 65C36.5 70 40 72 41 77L36.5 79C34 73 30.5 68 30 60C29.6 54 31.5 49.5 36 49Z" />
+                                    <path fill="#d6d6d6" d="M64 49C67.5 51 68 59 65.5 65C63.5 70 60 72 59 77L63.5 79C66 73 69.5 68 70 60C70.4 54 68.5 49.5 64 49Z" />
+                                    <path fill="#fff" stroke="#000" stroke-width=".9" d="M50 40C41 40 37 47 38 54C39 60 42 63 44 68C45 72 48 74 50 74C52 74 55 72 56 68C58 63 61 60 62 54C63 47 59 40 50 40Z" />
+                                    <circle cx="45.6" cy="52" r="2.3" fill="#000" />
+                                    <circle cx="54.4" cy="52" r="2.3" fill="#000" />
+                                    <circle cx="48.9" cy="58.6" r=".7" fill="#000" />
+                                    <circle cx="51.1" cy="58.6" r=".7" fill="#000" />
+                                    <ellipse cx="50" cy="66" rx="2.7" ry="4.3" fill="#000" />
+                                </g>
+                            </g>
+                        </mask>
+                        <rect width="100" height="100" mask="url(#@_maskId)" />
+                    </g>
+                </g>
+            </g>
         </g>
     </svg>
 </span>
@@ -19,6 +84,18 @@
 @code {
     // Several marks can be on screen at once (sidebar plus scan overlay), and ids must be unique.
     private readonly string _clipId = "bm-clip-" + Guid.NewGuid().ToString("N")[..8];
+    private readonly string _maskId = "bm-mask-" + Guid.NewGuid().ToString("N")[..8];
+    private readonly string _penId = "bm-pen-" + Guid.NewGuid().ToString("N")[..8];
+
+    // The square opening the M and the painting show through: the mat, or the frame's inner edge.
+    private string Inset => Compact ? "3.65" : "5.75";
+    private string Opening => Compact ? "16.7" : "12.5";
+
+    // Scales the M's 80-unit canvas to sit centered in the opening.
+    private string MTransform => Compact ? "translate(6 6) scale(.15)" : "translate(7.28 7.28) scale(.118)";
+
+    // No mat line and a larger M, for the sidebar.
+    [Parameter] public bool Compact { get; set; }
 
     // Loops the motions, for a busy indicator.
     [Parameter] public bool Busy { get; set; }
