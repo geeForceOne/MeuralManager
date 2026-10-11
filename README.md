@@ -6,6 +6,9 @@ playlist and cleanup tools the official Meural app doesn't give you.
 There's no separate account system — you sign in with your own Meural (Netgear) credentials, the
 same ones you use in the Meural app.
 
+This is an unofficial tool, not affiliated with or endorsed by Netgear or Meural. "Meural" and the
+Meural logo are trademarks of their owner.
+
 ![Dashboard](docs/images/mm-dashboard.png)
 
 ## Playlists

@@ -1,15 +1,16 @@
 // Animates the logo (Components/Shared/BrandMark.razor). Three motions, picked at random for each
 // play and never the same twice in a row:
 //   swap       - the M slides out behind the mat and the next one slides in, like a frame changing artwork;
-//   draw       - the M fades and is painted back in one stroke;
-//   straighten - the frame slips crooked, hangs there, and is nudged level again.
+//   draw       - the M fades and is painted back in one line, starting from the little loop at the bottom;
+//   scream     - the M slides out and The Scream slides in for a moment, then they trade back.
 // The motions themselves are keyframes in app.css (.brand-mark svg.play-*); this only decides when
-// one plays. The sidebar and sign-in logos play one when hovered or focused; a mark with
-// data-motion="once" (the sign-in screen) plays one shortly after it appears, and one with
+// one plays. The sign-in and Dashboard logos play one when hovered or focused (the sidebar's stays
+// still); a mark with
+// data-motion="once" (the sign-in screen and the Dashboard) plays one shortly after it appears, and one with
 // data-motion="loop" (a busy indicator) keeps playing for as long as it's on the page. Nothing
 // moves when the user asks for reduced motion.
 (() => {
-    const MOTIONS = ["swap", "draw", "straighten"];
+    const MOTIONS = ["swap", "draw", "scream"];
     const LOOP_PAUSE_MS = 450;
     const reduced = matchMedia("(prefers-reduced-motion: reduce)");
     const playing = new WeakMap(); // svg -> the motion it's playing right now
@@ -29,7 +30,9 @@
         svg.classList.add("play-" + motion);
     }
 
-    // Each motion animates exactly one element inside the svg, so one animationend ends the play.
+    // The animation named after the motion (bm-<motion>, on the M) ends the play. "scream" and "draw"
+    // also run other animations of the same length (bm-scream-pic, bm-draw-pen, bm-draw-all), which
+    // this ignores.
     document.addEventListener("animationend", e => {
         const svg = e.target.closest?.(".brand-mark svg");
         const motion = svg && playing.get(svg);
@@ -39,9 +42,9 @@
         if (looping.has(svg)) setTimeout(() => { if (svg.isConnected) play(svg); }, LOOP_PAUSE_MS);
     });
 
-    // Sidebar and sign-in logo: one play per hover or keyboard focus.
+    // Sign-in and Dashboard logo: one play per hover or keyboard focus.
     const onEnter = e => {
-        const brand = e.target.closest?.(".brand, .auth-brand");
+        const brand = e.target.closest?.(".auth-brand, .dashboard-header");
         // Moving between the logo's own parts isn't a new hover.
         if (!brand || (e.relatedTarget && brand.contains(e.relatedTarget))) return;
         const svg = brand.querySelector(".brand-mark svg");

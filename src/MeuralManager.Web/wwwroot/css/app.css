@@ -15,9 +15,9 @@
     --text-muted: #6b6560;
     --text-on-dark: #f2efe9;
     --text-on-dark-muted: #a9a29a;
-    --accent: #c8842a;
-    --accent-strong: #a86a1c;
-    --accent-soft: rgba(200, 132, 42, 0.14);
+    --accent: #bc8f68;
+    --accent-strong: #a67b55;
+    --accent-soft: rgba(188, 143, 104, 0.16);
     --danger: #b3402f;
     --danger-strong: #93301f;
     --danger-soft: rgba(179, 64, 47, 0.12);
@@ -40,9 +40,9 @@
         --border-soft: #26242a;
         --text: #ece9e4;
         --text-muted: #9b968f;
-        --accent: #d9974a;
-        --accent-strong: #eeb06a;
-        --accent-soft: rgba(217, 151, 74, 0.16);
+        --accent: #bc8f68;
+        --accent-strong: #d6b08f;
+        --accent-soft: rgba(188, 143, 104, 0.16);
         --danger: #e0685a;
         --danger-strong: #ec8577;
         --danger-soft: rgba(224, 104, 90, 0.14);
@@ -327,9 +327,24 @@ a { color: var(--accent-strong); }
 }
 
 /* The logo's three motions. wwwroot/js/brand-motion.js picks one and adds its play-* class to the
-   svg; each animates exactly one element, and the class comes off again when that animation ends. */
+   svg, and takes it off again when the animation named after the motion ends. */
 .brand-mark .bm-frame {
     transform-origin: 12px 12px;
+}
+
+/* How far the motions slide things to clear the opening: the mat, or the whole frame without one. */
+.brand-mark {
+    --bm-slide: 13px;
+}
+
+.brand-mark.compact {
+    --bm-slide: 17px;
+}
+
+/* The painting waits outside the opening until the "scream" motion brings it in. */
+.brand-mark .bm-pic {
+    transform: translateX(var(--bm-slide));
+    visibility: hidden;
 }
 
 .brand-mark svg.play-swap .bm-m {
@@ -337,49 +352,102 @@ a { color: var(--accent-strong); }
 }
 
 .brand-mark svg.play-draw .bm-m {
-    stroke-dasharray: 1 2;
-    animation: bm-draw 1500ms both;
+    animation: bm-draw 1700ms both;
 }
 
-.brand-mark svg.play-straighten .bm-frame {
-    animation: bm-straighten 1400ms both;
+.brand-mark .bm-pen {
+    stroke-dasharray: 1 1;
+}
+
+.brand-mark svg.play-draw .bm-pen {
+    animation: bm-draw-pen 1700ms both;
+}
+
+.brand-mark svg.play-draw .bm-pen-all {
+    animation: bm-draw-all 1700ms both;
+}
+
+.brand-mark svg.play-scream .bm-m {
+    animation: bm-scream 3000ms both;
+}
+
+.brand-mark svg.play-scream .bm-pic {
+    visibility: visible;
+    animation: bm-scream-pic 3000ms both;
 }
 
 /* Swap: the picture slides out behind the mat and the next one slides in. */
 @keyframes bm-swap {
     0%    { transform: translateX(0);     animation-timing-function: cubic-bezier(.6, 0, .9, .4); }
-    42%   { transform: translateX(-13px); animation-timing-function: step-end; }
-    42.1% { transform: translateX(13px);  animation-timing-function: cubic-bezier(.1, .6, .3, 1); }
+    42%   { transform: translateX(calc(-1 * var(--bm-slide))); animation-timing-function: step-end; }
+    42.1% { transform: translateX(var(--bm-slide)); animation-timing-function: cubic-bezier(.1, .6, .3, 1); }
     100%  { transform: translateX(0); }
 }
 
-/* Draw: the M fades away and is painted back in one stroke. */
+/* Draw: the M fades away and is painted back in one line, from the little loop at the bottom all
+   the way round. The pen line in the M's mask does the painting; the mask's white rect, which lets
+   the whole M through at rest, steps aside while it does. */
 @keyframes bm-draw {
-    0%   { opacity: 1; stroke-dashoffset: 0; }
-    13%  { opacity: 0; stroke-dashoffset: 0; animation-timing-function: step-end; }
-    14%  { opacity: 1; stroke-dashoffset: 1.05; animation-timing-function: cubic-bezier(.45, 0, .3, 1); }
-    100% { opacity: 1; stroke-dashoffset: 0; }
+    0%        { opacity: 1; }
+    12%       { opacity: 0; animation-timing-function: step-end; }
+    13%, 100% { opacity: 1; }
 }
 
-/* Straighten: the frame slips crooked, hangs there, and is nudged level again. */
-@keyframes bm-straighten {
-    0%   { transform: rotate(0);      animation-timing-function: cubic-bezier(.3, 0, .2, 1.4); }
-    22%  { transform: rotate(-9deg);  animation-timing-function: linear; }
-    48%  { transform: rotate(-9deg);  animation-timing-function: cubic-bezier(.4, 0, .2, 1); }
-    72%  { transform: rotate(2.5deg); animation-timing-function: ease-in-out; }
-    87%  { transform: rotate(-1deg);  animation-timing-function: ease-in-out; }
-    100% { transform: rotate(0); }
+@keyframes bm-draw-pen {
+    0%, 13% { stroke-dashoffset: 1; animation-timing-function: cubic-bezier(.4, 0, .3, 1); }
+    100%    { stroke-dashoffset: 0; }
+}
+
+@keyframes bm-draw-all {
+    0%   { visibility: visible; animation-timing-function: step-end; }
+    12%  { visibility: hidden;  animation-timing-function: step-end; }
+    100% { visibility: visible; }
+}
+
+/* Scream: the M slides out, The Scream slides in and hangs for a moment, and they trade back. */
+@keyframes bm-scream {
+    0%   { transform: translateX(0);     animation-timing-function: cubic-bezier(.6, 0, .9, .4); }
+    14%  { transform: translateX(calc(-1 * var(--bm-slide))); animation-timing-function: step-end; }
+    86%  { transform: translateX(var(--bm-slide)); animation-timing-function: cubic-bezier(.1, .6, .3, 1); }
+    100% { transform: translateX(0); }
+}
+
+@keyframes bm-scream-pic {
+    0%, 10%   { transform: translateX(var(--bm-slide)); animation-timing-function: cubic-bezier(.1, .6, .3, 1); }
+    26%       { transform: translateX(0); }
+    74%       { transform: translateX(0);     animation-timing-function: cubic-bezier(.6, 0, .9, .4); }
+    88%, 100% { transform: translateX(calc(-1 * var(--bm-slide))); }
+}
+
+/* The painting's grays assume a dark surface. The sidebar is dark in both themes; on the light
+   theme's sign-in card and scan overlay the grays are flipped, so what's dark stays dark. */
+@media (prefers-color-scheme: light) {
+    .brand-mark .bm-pic-paint {
+        filter: invert(1);
+    }
+
+    .brand .brand-mark .bm-pic-paint {
+        filter: none;
+    }
 }
 
 @media (prefers-reduced-motion: reduce) {
     .brand-mark .bm-m,
+    .brand-mark .bm-pen,
+    .brand-mark .bm-pen-all,
+    .brand-mark .bm-pic,
     .brand-mark .bm-frame {
         animation: none !important;
     }
 }
 
+.brand .brand-mark {
+    font-size: 1.85rem;
+}
+
 .brand-name {
     font-weight: 650;
+    font-size: 1.05rem;
     letter-spacing: -0.01em;
     color: var(--text-on-dark);
 }
@@ -491,6 +559,21 @@ a { color: var(--accent-strong); }
 
 .page-header {
     margin-bottom: 24px;
+}
+
+/* The Dashboard's header: a large logo next to the title. */
+.dashboard-header {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+}
+
+.dashboard-header .brand-mark {
+    font-size: 3.3rem;
+}
+
+.dashboard-header h1 {
+    margin: 0;
 }
 
 .page-subtitle {
@@ -1793,6 +1876,14 @@ a { color: var(--accent-strong); }
     color: var(--text-muted);
     font-size: 0.88rem;
     margin-bottom: 22px;
+}
+
+/* The "not affiliated" line under the sign-in form. */
+.auth-disclaimer {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    text-align: center;
+    margin: 18px 0 0;
 }
 
 .auth-error {

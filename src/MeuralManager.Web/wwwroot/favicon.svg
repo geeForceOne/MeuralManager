@@ -1,8 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-  <!-- The Meural Manager mark (see Components/Shared/BrandMark.razor) on the sidebar's dark colour, so it reads on light and dark browser tabs alike. The thin mat line is left out: it disappears at 16px. -->
+  <!-- The Meural Manager mark (see Components/Shared/BrandMark.razor) on the sidebar's dark color, so it reads on light and dark browser tabs alike. The thin mat line is left out, which lets the M be larger: both would disappear at 16px. -->
   <rect width="24" height="24" rx="5.5" fill="#17151b"/>
-  <g fill="none" stroke="#d9974a" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
-    <rect x="3.6" y="3.6" width="16.8" height="16.8" rx="2.6"/>
-    <path d="M8 16.2V8l4 4.8L16 8v8.2"/>
-  </g>
+  <rect x="3.6" y="3.6" width="16.8" height="16.8" rx="2.6" fill="none" stroke="#bc8f68" stroke-width="1.9"/>
+  <path transform="translate(6.2 6.2) scale(.145)" fill="#bc8f68" fill-rule="evenodd" d="M53.68 66.26C53.68 66.26 59.23 61.66 59.23 54.15C59.23 45.48 53.22 43.56 49.02 43.56C43.26 43.56 38.56 49.14 38.56 54.54C38.56 64.41 46.35 67.46 46.35 67.46C46.35 67.46 44.2 69.66 36.01 69.66C15.25 69.66 7.19 43.12 7.19 30.04C7.19 16.96 12.11 9.94 18.66 9.94C30.08 9.94 25.11 30.56 41.33 30.56C51.13 30.56 54.4 16.44 63.1 16.44C70.51 16.44 72.12 24.33 72.12 31.93C72.12 45.04 66.19 66.26 53.68 66.26M48.87 65.71C47.64 65.71 42.18 62.17 42.18 54.95C42.18 49.4 45.5 46.6 49.06 46.6C53.67 46.6 54.4 51.82 54.4 54.42C54.4 61.88 49.04 65.71 48.87 65.71M63.18 13.25C52.44 13.25 49.34 27.18 41.7 27.18C31.75 27.18 36.23 7.12 18.72 7.12C7.13 7.12 0 18.11 0 31.12C0 44.49 10.06 72.88 37.15 72.88C45.67 72.88 50.96 68.77 50.96 68.77C51.72 68.89 52.75 68.96 53.83 68.96C66.7 68.96 80 50.3 80 32.26C80 16.75 69.33 13.25 63.18 13.25"/>
 </svg>
