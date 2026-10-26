@@ -3,4 +3,7 @@
     <Project Path="src/MeuralManager.Core/MeuralManager.Core.csproj" />
     <Project Path="src/MeuralManager.Web/MeuralManager.Web.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/MeuralManager.Tests/MeuralManager.Tests.csproj" />
+  </Folder>
 </Solution>

@@ -48,6 +48,6 @@ public static class HomepageEndpoints
             }
 
             return Results.Unauthorized();
-        });
+        }).WithMetadata(new SkipStatusCodePages());
     }
 }

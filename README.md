@@ -80,6 +80,24 @@ A small API that returns your playlist count, image count and last scan time, fo
 Invoke-RestMethod http://localhost:8080/api/homepage/stats -Headers @{ 'X-API-Key' = '<token>' }
 ```
 
+## Privacy and intended use
+
+Meural Manager is meant to be self-hosted for your own Meural account, or for a household
+that shares one server. It is not built to be offered as a public service.
+
+- **Your Meural password is never stored.** Signing in gives the app a Meural session token,
+  which is kept encrypted in your browser (and, while a thumbnail download runs, in the server's
+  memory).
+- **Not everything is encrypted at rest.** In the `/data/cache` volume, each signed-in account
+  has a folder (named after its email) with a SQLite database, an image cache and the originals
+  kept for "Revert to original". The database holds playlist and image names, your settings and
+  the list of Immich photos you uploaded. All of it is stored in readable form, so anyone with access to the server or the volume can read them. Only the
+  Claude, OpenAI and Immich API keys are encrypted, with the keys in `/data/keys`. The Homepage
+  widget token is stored only as a hash.
+- **Protect the host.** Run it on a machine you control. Keep it on your home network, or put it
+  behind HTTPS and your own authentication if it's reachable from the internet. Anyone who can
+  open the page can try to sign in with a Meural account.
+
 ## With Docker
 
 Using docker compose:

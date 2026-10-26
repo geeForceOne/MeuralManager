@@ -9,6 +9,21 @@
 </div>
 
 <div class="settings-group">
+    <h2>Appearance</h2>
+    <div class="setting-row">
+        <div>
+            <div class="setting-label">Theme</div>
+            <div class="muted setting-description">System follows your device's light or dark setting.</div>
+        </div>
+        <select class="text-input setting-select" aria-label="Theme" value="@_theme" @onchange="OnThemeChanged">
+            <option value="@AppTheme.System">System</option>
+            <option value="@AppTheme.Dark">Dark</option>
+            <option value="@AppTheme.Light">Light</option>
+        </select>
+    </div>
+</div>
+
+<div class="settings-group">
     <h2>Dashboard</h2>
     <div class="setting-row">
         <div>
@@ -66,7 +81,7 @@
                 <div>
                     <div class="setting-label">@(frame.Alias ?? $"Frame {deviceId}")</div>
                 </div>
-                <select class="text-input frame-orientation-select" aria-label="Orientation of @(frame.Alias ?? $"Frame {deviceId}")"
+                <select class="text-input setting-select" aria-label="Orientation of @(frame.Alias ?? $"Frame {deviceId}")"
                         value="@OrientationOf(deviceId)" @onchange="e => OnFrameOrientationChanged(deviceId, e)">
                     <option value="@FrameOrientation.Vertical">9:16 (vertical)</option>
                     <option value="@FrameOrientation.Horizontal">16:9 (horizontal)</option>
@@ -301,6 +316,7 @@
 </div>
 
 @code {
+    private AppTheme _theme = AppTheme.System;
     private bool _showPictureOfTheMoment = true;
     private bool _cropFeatureEnabled = true;
     private bool _remoteControlEnabled = true;
@@ -406,6 +422,7 @@
         _cropFeatureEnabled = prefs.CropFeatureEnabled;
         _remoteControlEnabled = prefs.RemoteControlEnabled;
         _immichEnabled = prefs.ImmichEnabled;
+        _theme = await Session.LoadThemeAsync();
 
         await RefreshUnreadableAsync();
         _hasHomepageToken = await Session.HasHomepageTokenAsync();
@@ -436,6 +453,16 @@
     {
         if (Enum.TryParse<FrameOrientation>(e.Value?.ToString(), out var orientation))
             await Session.SetFrameOrientationAsync(deviceId, orientation);
+    }
+
+    private async Task OnThemeChanged(ChangeEventArgs e)
+    {
+        if (!Enum.TryParse<AppTheme>(e.Value?.ToString(), out var theme))
+            return;
+
+        _theme = theme;
+        await Session.SaveThemeAsync(theme);
+        await JS.InvokeVoidAsync("meuralTheme.apply", theme.ToString());
     }
 
     private async Task OnToggleChanged(ChangeEventArgs e)

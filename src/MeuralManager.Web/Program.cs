@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.DataProtection;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddRazorComponents()
-    .AddInteractiveServerComponents();
+    .AddInteractiveServerComponents(o => o.DetailedErrors = builder.Environment.IsDevelopment());
 
 // Persisted so browser-side sessions (see WebSessionStore) survive a container restart -
 // without this, ASP.NET Core's Data Protection keys are ephemeral per-process and every
@@ -33,6 +33,10 @@ if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
 }
+
+// A browser loading an unknown address gets the NotFound page. The API, image and backup
+// endpoints opt out (SkipStatusCodePages), so they keep their plain 401/404 responses.
+app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
 
 app.UseAntiforgery();
 

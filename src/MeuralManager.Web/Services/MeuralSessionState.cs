@@ -650,20 +650,9 @@ public sealed class MeuralSessionState(
 
     private async Task LoadFrameOrientationsAsync()
     {
-        FrameOrientations = [];
-        if (_cacheStore is null)
-            return;
-
-        var raw = await _cacheStore.GetSettingAsync("FrameOrientations", CancellationToken.None);
-        if (string.IsNullOrEmpty(raw))
-            return;
-
-        foreach (var entry in raw.Split(',', StringSplitOptions.RemoveEmptyEntries))
-        {
-            var parts = entry.Split(':');
-            if (parts.Length == 2 && long.TryParse(parts[0], out var id))
-                FrameOrientations[id] = parts[1] == "h" ? FrameOrientation.Horizontal : FrameOrientation.Vertical;
-        }
+        FrameOrientations = _cacheStore is null
+            ? []
+            : FrameOrientationExtensions.Parse(await _cacheStore.GetSettingAsync("FrameOrientations", CancellationToken.None));
     }
 
     public async Task SetFrameOrientationAsync(long deviceId, FrameOrientation orientation)
@@ -672,31 +661,13 @@ public sealed class MeuralSessionState(
             return;
 
         FrameOrientations[deviceId] = orientation;
-        var raw = string.Join(",", FrameOrientations.Select(kv => $"{kv.Key}:{(kv.Value == FrameOrientation.Horizontal ? "h" : "v")}"));
-        await _cacheStore.SetSettingAsync("FrameOrientations", raw, CancellationToken.None);
+        await _cacheStore.SetSettingAsync("FrameOrientations", FrameOrientationExtensions.Format(FrameOrientations), CancellationToken.None);
     }
 
-    // What to pre-select when cropping an image that's going into (or already in) this playlist:
-    // look at every frame it's installed on - horizontal only if they're ALL set to horizontal,
-    // so a mix of orientations (or a frame nobody's set yet, or no frame at all) comes out
-    // vertical, which is the default.
-    public CropSuggestion GetCropSuggestion(long? galleryId)
-    {
-        var frames = new List<MeuralDevice>();
-        if (galleryId is long id && AllDevicesCache is not null && DeviceGalleriesCache is not null)
-        {
-            frames = AllDevicesCache
-                .Where(d => d.Id is long deviceId
-                    && DeviceGalleriesCache.TryGetValue(deviceId, out var galleries)
-                    && galleries.Any(g => g.Id == id))
-                .ToList();
-        }
-
-        var names = frames.Select(f => f.Alias ?? $"Frame {f.Id}").ToList();
-        var allHorizontal = frames.Count > 0 && frames.All(f => f.Id is long deviceId
-            && FrameOrientations.TryGetValue(deviceId, out var o) && o == FrameOrientation.Horizontal);
-        return new CropSuggestion(allHorizontal ? FrameOrientation.Horizontal : FrameOrientation.Vertical, names);
-    }
+    // What to pre-select when cropping an image that's going into (or already in) this playlist,
+    // from the frames it's installed on - see CropSuggestion.For.
+    public CropSuggestion GetCropSuggestion(long? galleryId) =>
+        CropSuggestion.For(galleryId, AllDevicesCache, DeviceGalleriesCache, FrameOrientations);
 
     // Which optional features are switched on - per-account like the settings above (so they follow
     // the account across browsers/devices and survive clearing site data), unlike the pane widths
@@ -736,6 +707,31 @@ public sealed class MeuralSessionState(
         await WriteAsync("FeatureCrop", toggles.CropFeatureEnabled);
         await WriteAsync("FeatureRemoteControl", toggles.RemoteControlEnabled);
         await WriteAsync("FeatureImmich", toggles.ImmichEnabled);
+    }
+
+    // The color theme the account picked in Settings - per-account like the toggles above. A browser
+    // also keeps the last applied one (theme.js) so the next page load starts in it before sign-in.
+    public async Task<AppTheme> LoadThemeAsync() =>
+        _cacheStore is not null
+        && Enum.TryParse<AppTheme>(await _cacheStore.GetSettingAsync("Theme", CancellationToken.None), out var theme)
+            ? theme
+            : AppTheme.System;
+
+    public async Task SaveThemeAsync(AppTheme theme)
+    {
+        if (_cacheStore is not null)
+            await _cacheStore.SetSettingAsync("Theme", theme.ToString(), CancellationToken.None);
+    }
+
+    // The newest version whose "What's new" banner this account has seen or dismissed (see
+    // WhatsNewBanner). Null for an account that has never seen one.
+    public async Task<string?> LoadLastSeenVersionAsync() =>
+        _cacheStore is null ? null : await _cacheStore.GetSettingAsync("LastSeenVersion", CancellationToken.None);
+
+    public async Task SaveLastSeenVersionAsync(string version)
+    {
+        if (_cacheStore is not null)
+            await _cacheStore.SetSettingAsync("LastSeenVersion", version, CancellationToken.None);
     }
 
     // Which saved API keys are still in the DB but can no longer be decrypted (the Data Protection

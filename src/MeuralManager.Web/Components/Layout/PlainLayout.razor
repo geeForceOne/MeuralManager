@@ -1,0 +1,13 @@
+@inherits LayoutComponentBase
+
+@* For the static Error page: no sign-in gate, no sidebar, nothing that needs the interactive
+   circuit (which may be what just failed). Looks like the sign-in screen. *@
+<div class="auth-shell">
+    <div class="auth-card">
+        <div class="auth-brand">
+            <BrandMark />
+            <h1>Meural Manager</h1>
+        </div>
+        @Body
+    </div>
+</div>

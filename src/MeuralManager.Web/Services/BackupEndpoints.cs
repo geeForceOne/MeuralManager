@@ -7,6 +7,6 @@ public static class BackupEndpoints
         app.MapGet("/backups/{id}/download", (string id, BackupArchiveService archive) =>
             archive.TryGetDownload(id, out var zipPath, out var fileName)
                 ? Results.File(zipPath, "application/zip", fileName)
-                : Results.NotFound());
+                : Results.NotFound()).WithMetadata(new SkipStatusCodePages());
     }
 }

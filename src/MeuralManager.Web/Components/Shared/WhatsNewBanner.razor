@@ -1,0 +1,38 @@
+@inject MeuralSessionState Session
+
+@* After an update, tells each account once what's new; stays until it's closed. See WhatsNew. *@
+@if (_show)
+{
+    <div class="whats-new-banner" role="status">
+        <p>
+            Meural Manager was updated to @AppInfo.DisplayVersion.
+            <a href="release-notes" @onclick="DismissAsync">See what's new</a>
+        </p>
+        <button type="button" class="btn btn-ghost btn-icon btn-sm" aria-label="Close" title="Close" @onclick="DismissAsync">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 6l12 12M18 6L6 18" stroke-linecap="round"/></svg>
+        </button>
+    </div>
+}
+
+@code {
+    private bool _show;
+
+    protected override async Task OnInitializedAsync()
+    {
+        switch (WhatsNew.Decide(AppInfo.Version, await Session.LoadLastSeenVersionAsync()))
+        {
+            case WhatsNew.Decision.Announce:
+                _show = true;
+                break;
+            case WhatsNew.Decision.StartAtRunning:
+                await Session.SaveLastSeenVersionAsync(AppInfo.Version);
+                break;
+        }
+    }
+
+    private async Task DismissAsync()
+    {
+        _show = false;
+        await Session.SaveLastSeenVersionAsync(AppInfo.Version);
+    }
+}

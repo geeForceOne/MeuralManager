@@ -1,7 +1,7 @@
 @if (_visible)
 {
-    <div class="modal-backdrop" @onclick="Cancel">
-        <div class="modal-card modal-card-lg" @onclick:stopPropagation="true">
+    <div class="modal-backdrop">
+        <div class="modal-card modal-card-lg">
             <h3>Add Existing Images</h3>
             <input class="text-input" placeholder="Filter by name…" @bind="_filter" @bind:event="oninput" />
 

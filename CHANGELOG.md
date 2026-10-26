@@ -1,5 +1,21 @@
 # Release notes
 
+## 1.14.0 - 2026-10-26
+
+### New
+
+- Pick a theme in Settings: System (follows your device), Dark or Light. It's saved with your account, so it follows you to other browsers.
+- A clearer message when the connection to the app drops, showing that it's reconnecting and offering a retry if that fails.
+
+### Improved
+
+- Dialogs no longer close when you click outside them, so a stray click can't throw away what you typed or a crop you set up. Use Cancel or Escape instead.
+- AI name suggestions now use newer models by default: Claude Haiku 5.5 and GPT-6 Luna (GPT-4o mini is being retired by OpenAI). A model you chose yourself in Settings stays as it is.
+
+### Fixed
+
+- Minor fixes and updates.
+
 ## 1.13.0 - 2026-10-11
 
 ### New

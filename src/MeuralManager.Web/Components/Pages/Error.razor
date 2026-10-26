@@ -1,0 +1,28 @@
+@page "/Error"
+@attribute [ExcludeFromInteractiveRouting]
+@layout PlainLayout
+@using System.Diagnostics
+
+@* Where unhandled errors land outside Development (UseExceptionHandler in Program.cs). Rendered
+   statically, so it shows even when the interactive circuit is what broke. *@
+<PageTitle>Error · Meural Manager</PageTitle>
+
+<p class="auth-subtitle">
+    Something went wrong and the request couldn't be completed. Try again; if it keeps happening,
+    the server log has the details.
+</p>
+@if (!string.IsNullOrEmpty(RequestId))
+{
+    <p class="muted error-request-id">Request ID: <code>@RequestId</code></p>
+}
+<a class="btn btn-primary" href="">Back to Dashboard</a>
+
+@code {
+    [CascadingParameter]
+    private HttpContext? HttpContext { get; set; }
+
+    private string? RequestId { get; set; }
+
+    protected override void OnInitialized() =>
+        RequestId = Activity.Current?.Id ?? HttpContext?.TraceIdentifier;
+}

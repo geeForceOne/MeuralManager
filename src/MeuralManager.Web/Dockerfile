@@ -17,7 +17,9 @@ COPY CHANGELOG.md ./
 # (wwwroot/_framework/blazor.web.js) once the real source lands. Restoring again against the
 # full source is what regenerates that manifest correctly - it's fast since packages are
 # already cached from the first restore.
-RUN dotnet publish src/MeuralManager.Web/MeuralManager.Web.csproj -c Release -o /app
+# The version shown in the app; the publish workflow passes the release tag's number.
+ARG VERSION=dev
+RUN dotnet publish src/MeuralManager.Web/MeuralManager.Web.csproj -c Release -o /app -p:InformationalVersion=$VERSION
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app

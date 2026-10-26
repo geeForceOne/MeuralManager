@@ -5,7 +5,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>MeuralManager.Web</RootNamespace>
-    <Version>1.13.0</Version>
+    <!-- The version shown in the app (AppInfo.Version). Local builds say "dev"; the Docker build
+         passes the release version (-p:InformationalVersion=1.2.0) from the git tag, see the
+         Dockerfile and .github/workflows/docker-publish.yml. -->
+    <InformationalVersion>dev</InformationalVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <InvariantGlobalization>true</InvariantGlobalization>
     <UserSecretsId>meuralmanager-web</UserSecretsId>
@@ -23,7 +26,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Markdig" Version="1.4.0" />
+    <PackageReference Include="Markdig" Version="1.5.0" />
   </ItemGroup>
 
   <ItemGroup>

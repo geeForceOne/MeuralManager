@@ -1,7 +1,7 @@
 /* ---------------------------------------------------------------------------
    Meural Manager - hand-built design system.
    Dark, gallery-like canvas by default (this is a tool for an art frame, after
-   all), with a light variant for those who prefer it via prefers-color-scheme.
+   all), with a light variant. Settings picks System (prefers-color-scheme), Dark or Light.
 --------------------------------------------------------------------------- */
 
 :root {
@@ -30,8 +30,10 @@
     --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
 }
 
+/* Dark: when the system prefers it and Settings hasn't forced Light, or when Settings forced Dark
+   (<html data-theme>, see theme.js). The two blocks must stay identical. */
 @media (prefers-color-scheme: dark) {
-    :root {
+    :root:not([data-theme="light"]) {
         --bg: #121114;
         --bg-elevated: #1b1a1e;
         --bg-sidebar: #0e0d10;
@@ -50,6 +52,26 @@
         --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
         --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.45);
     }
+}
+
+:root[data-theme="dark"] {
+    --bg: #121114;
+    --bg-elevated: #1b1a1e;
+    --bg-sidebar: #0e0d10;
+    --bg-inset: #201f23;
+    --border: #2d2b30;
+    --border-soft: #26242a;
+    --text: #ece9e4;
+    --text-muted: #9b968f;
+    --accent: #bc8f68;
+    --accent-strong: #d6b08f;
+    --accent-soft: rgba(188, 143, 104, 0.16);
+    --danger: #e0685a;
+    --danger-strong: #ec8577;
+    --danger-soft: rgba(224, 104, 90, 0.14);
+    --success: #7bbf7e;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.45);
 }
 
 * {
@@ -422,13 +444,19 @@ a { color: var(--accent-strong); }
 /* The painting's grays assume a dark surface. The sidebar is dark in both themes; on the light
    theme's sign-in card and scan overlay the grays are flipped, so what's dark stays dark. */
 @media (prefers-color-scheme: light) {
-    .brand-mark .bm-pic-paint {
+    :where(:root:not([data-theme="dark"])) .brand-mark .bm-pic-paint {
         filter: invert(1);
     }
+}
 
-    .brand .brand-mark .bm-pic-paint {
-        filter: none;
-    }
+/* :where() keeps these as specific as plain ".brand-mark .bm-pic-paint", so the sidebar rule below
+   still wins. */
+:where(:root[data-theme="light"]) .brand-mark .bm-pic-paint {
+    filter: invert(1);
+}
+
+.brand .brand-mark .bm-pic-paint {
+    filter: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -606,6 +634,8 @@ a { color: var(--accent-strong); }
     display: inline-flex;
     align-items: center;
     gap: 6px;
+    /* For links styled as buttons (Back to Dashboard on the Error/NotFound pages). */
+    text-decoration: none;
     transition: filter 0.12s ease, opacity 0.12s ease, background 0.12s ease;
 }
 
@@ -771,6 +801,28 @@ a { color: var(--accent-strong); }
     color: var(--accent-strong);
     font-weight: 600;
     font-size: 0.86rem;
+}
+
+/* "Meural Manager was updated to X" - shown once per account after an update (WhatsNewBanner). */
+.whats-new-banner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 18px;
+    padding: 8px 10px 8px 16px;
+    background: var(--accent-soft);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+}
+
+.whats-new-banner p {
+    margin: 0;
+    flex: 1;
+}
+
+.whats-new-banner a {
+    color: var(--accent-strong);
+    font-weight: 600;
 }
 
 .info-panel {
@@ -1145,7 +1197,7 @@ a { color: var(--accent-strong); }
     font-size: 1rem;
 }
 
-.frame-orientation-select {
+.setting-select {
     width: auto;
     min-width: 170px;
 }
@@ -1952,6 +2004,14 @@ a { color: var(--accent-strong); }
 
 /* ---------- Misc ---------- */
 
+.error-request-id {
+    font-size: 0.85rem;
+}
+
+.info-panel .not-found-actions {
+    margin-top: 14px;
+}
+
 .empty-state {
     color: var(--text-muted);
     padding: 32px 12px;
@@ -2552,4 +2612,63 @@ a { color: var(--accent-strong); }
     white-space: pre;
     overflow-x: auto;
     user-select: all;
+}
+
+/* ---------------------------------------------------------------------------
+   Reconnect dialog (Components/Layout/ReconnectModal.razor). Blazor sets the state
+   classes on the dialog; each state shows only its own lines and buttons.
+--------------------------------------------------------------------------- */
+.components-reconnect-first-attempt-visible,
+.components-reconnect-repeated-attempt-visible,
+.components-reconnect-failed-visible,
+.components-pause-visible,
+.components-resume-failed-visible,
+.components-rejoining-animation {
+    display: none;
+}
+
+#components-reconnect-modal.components-reconnect-show .components-reconnect-first-attempt-visible,
+#components-reconnect-modal.components-reconnect-show .components-rejoining-animation,
+#components-reconnect-modal.components-reconnect-paused .components-pause-visible,
+#components-reconnect-modal.components-reconnect-resume-failed .components-resume-failed-visible,
+#components-reconnect-modal.components-reconnect-retrying,
+#components-reconnect-modal.components-reconnect-retrying .components-reconnect-repeated-attempt-visible,
+#components-reconnect-modal.components-reconnect-retrying .components-rejoining-animation,
+#components-reconnect-modal.components-reconnect-failed,
+#components-reconnect-modal.components-reconnect-failed .components-reconnect-failed-visible {
+    display: block;
+}
+
+#components-reconnect-modal {
+    width: min(22rem, calc(100vw - 32px));
+    margin: 20vh auto;
+    padding: 28px 24px;
+    background: var(--bg-elevated);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+    /* showModal() focuses the dialog itself; its buttons still show their own focus ring. */
+    outline: none;
+}
+
+#components-reconnect-modal::backdrop {
+    background: rgba(0, 0, 0, 0.45);
+}
+
+.components-reconnect-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    text-align: center;
+}
+
+#components-reconnect-modal p {
+    margin: 0;
+}
+
+/* Same size as the scan overlay's busy logo. */
+.components-rejoining-animation .brand-mark {
+    font-size: 2.2rem;
 }

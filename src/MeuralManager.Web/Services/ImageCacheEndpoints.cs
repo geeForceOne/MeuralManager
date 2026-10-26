@@ -21,6 +21,6 @@ public static class ImageCacheEndpoints
             // this is most of what makes the app feel faster.
             http.Response.Headers.CacheControl = "private, max-age=604800, immutable";
             return Results.File(path, FileNaming.GuessContentType(path));
-        });
+        }).WithMetadata(new SkipStatusCodePages());
     }
 }

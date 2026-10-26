@@ -1,11 +1,10 @@
 @page "/"
-@using System.Reflection
 @inject MeuralSessionState Session
 @inject UserPreferencesStore Preferences
 
 <div class="page-header dashboard-header">
     <BrandMark PlayOnLoad="true" />
-    <h1>Meural Manager <span class="version-tag">v@(AppVersion)</span></h1>
+    <h1>Meural Manager <span class="version-tag">@AppInfo.DisplayVersion</span></h1>
 </div>
 
 <div class="scan-panel">
@@ -72,10 +71,6 @@
 }
 
 @code {
-    private static readonly string AppVersion =
-        Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
-        ?? "dev";
-
     private bool _showPictureOfTheMoment = true;
     private MeuralItem? _pictureItem;
 
