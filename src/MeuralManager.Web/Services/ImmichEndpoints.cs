@@ -19,7 +19,7 @@ public static class ImmichEndpoints
                 return Results.BadRequest();
 
             return await StreamAsync(http, () => client.GetAssetThumbnailAsync(assetId, size, ct));
-        });
+        }).WithMetadata(new SkipStatusCodePages());
 
         // The best Meural-ready version of a photo (the JPEG/PNG original, or Immich's converted
         // fullsize/preview JPEG for HEIC/RAW) - what the crop dialog loads, so it's cropping the
@@ -36,7 +36,7 @@ public static class ImmichEndpoints
 
             var asset = new ImmichAsset { Id = assetId, OriginalMimeType = mime };
             return await StreamAsync(http, () => client.GetBestImageAsync(asset, ct));
-        });
+        }).WithMetadata(new SkipStatusCodePages());
 
         app.MapGet("/immich-proxy/{token}/person/{personId}", async (
             string token, string personId, ImmichProxyRegistry registry, HttpContext http, CancellationToken ct) =>
@@ -47,7 +47,7 @@ public static class ImmichEndpoints
                 return Results.BadRequest();
 
             return await StreamAsync(http, () => client.GetPersonThumbnailAsync(personId, ct));
-        });
+        }).WithMetadata(new SkipStatusCodePages());
     }
 
     private static async Task<IResult> StreamAsync(HttpContext http, Func<Task<HttpResponseMessage>> fetch)

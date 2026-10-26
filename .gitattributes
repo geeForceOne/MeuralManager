@@ -1,0 +1,8 @@
+# Keep LF line endings everywhere (repo and working copy) regardless of the machine's
+# core.autocrlf, so Windows checkouts match what the Linux Docker build sees.
+* text=auto eol=lf
+
+# Windows-only scripts need CRLF.
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.ps1 text eol=crlf

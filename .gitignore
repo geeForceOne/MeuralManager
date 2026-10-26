@@ -1,7 +1,13 @@
+# Build output
 bin/
 obj/
-.vs/
+publish/
 *.user
+*.suo
+.vs/
+.vscode/
+.idea/
+TestResults/
 
 # Runtime data for MeuralManager.Web (local dev without CACHE_ROOT_PATH/DATA_PROTECTION_KEYS_PATH
 # set) - per-account SQLite cache and ASP.NET Core Data Protection key material. Never commit
@@ -9,3 +15,27 @@ obj/
 # the keys can decrypt browser-stored session tokens (see WebSessionStore).
 src/MeuralManager.Web/cache/
 src/MeuralManager.Web/keys/
+**/keys/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Secrets and machine-local configuration
+.env
+.env.*
+!.env.example
+appsettings.*.local.json
+secrets.json
+*.pfx
+*.pem
+*.key
+
+# Claude Code machine-local settings (the shared settings.json stays tracked)
+.claude/settings.local.json
+.claude/worktrees/
+
+# OS noise
+Thumbs.db
+.DS_Store

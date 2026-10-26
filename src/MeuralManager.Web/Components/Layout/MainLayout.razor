@@ -3,6 +3,7 @@
 @inject MeuralSessionState Session
 @inject WebSessionStore SessionStore
 @inject UserPreferencesStore Preferences
+@inject IJSRuntime JS
 
 @if (_checkingSession)
 {
@@ -21,6 +22,7 @@ else
         <NavMenu Email="@Session.Email" OnSignOut="SignOutAsync" ImmichEnabled="_immichEnabled" />
         <div class="app-main-wrap">
             <main class="app-main">
+                <WhatsNewBanner />
                 <ErrorBoundary @ref="_errorBoundary">
                     <ChildContent>
                         @Body
@@ -122,6 +124,9 @@ else
         {
             _togglesLoaded = true;
             await LoadTogglesAsync();
+            // The account's theme can differ from the one this browser used last (another browser
+            // changed it, or it's a different account), so it's applied on every sign-in.
+            await JS.InvokeVoidAsync("meuralTheme.apply", (await Session.LoadThemeAsync()).ToString());
         }
 
         StateHasChanged();

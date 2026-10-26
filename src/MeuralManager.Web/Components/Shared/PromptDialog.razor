@@ -1,7 +1,7 @@
 @if (_visible)
 {
-    <div class="modal-backdrop" @onclick="() => Resolve(null)">
-        <div class="modal-card" @onclick:stopPropagation="true">
+    <div class="modal-backdrop">
+        <div class="modal-card">
             <h3>@_title</h3>
             <label class="field">
                 <span>@_label</span>
