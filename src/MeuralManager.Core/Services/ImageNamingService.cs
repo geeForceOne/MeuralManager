@@ -114,11 +114,13 @@ public static class ImageNamingService
             response = await client.Messages.Create(new MessageCreateParams
             {
                 Model = model,
-                MaxTokens = 300,
-                // No OutputConfig.Effort here - which models even accept it varies (Claude
-                // Haiku 4.5, the default for this feature, rejects it outright with a 400), and
-                // the model picker lets the user configure any Claude model string, so there's
-                // no single value that's safe to send unconditionally.
+                // Newer models think by default and thinking counts toward this cap, so it has
+                // to leave room for that on top of the few words of the title itself.
+                MaxTokens = 2048,
+                // No OutputConfig.Effort here - which models even accept it varies (older ones
+                // like Claude Haiku 4.5 reject it outright with a 400), and the model picker
+                // lets the user configure any Claude model string, so there's no single value
+                // that's safe to send unconditionally.
                 Messages =
                 [
                     new()
@@ -147,7 +149,8 @@ public static class ImageNamingService
 
     private sealed record OpenAiChatRequest(
         [property: JsonPropertyName("model")] string Model,
-        [property: JsonPropertyName("max_tokens")] int MaxTokens,
+        // max_completion_tokens, not the deprecated max_tokens, which reasoning models reject.
+        [property: JsonPropertyName("max_completion_tokens")] int MaxCompletionTokens,
         [property: JsonPropertyName("messages")] List<OpenAiChatMessage> Messages);
 
     private sealed record OpenAiChatMessage(
@@ -173,7 +176,8 @@ public static class ImageNamingService
 
         var body = new OpenAiChatRequest(
             Model: model,
-            MaxTokens: 300,
+            // Includes the reasoning tokens, so leave room for those as well as the title.
+            MaxCompletionTokens: 2048,
             Messages:
             [
                 new OpenAiChatMessage("user",

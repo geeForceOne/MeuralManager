@@ -16,8 +16,8 @@ public sealed record AiSettings
 {
     // Cheap-by-default: naming a picture is a simple classification task, not something that
     // needs a flagship model - the user picks these explicitly if they want something else.
-    public const string DefaultClaudeModel = "claude-haiku-4-5";
-    public const string DefaultOpenAiModel = "gpt-4o-mini";
+    public const string DefaultClaudeModel = "claude-haiku-5-5";
+    public const string DefaultOpenAiModel = "gpt-6-luna";
 
     public AiProvider Provider { get; init; } = AiProvider.Claude;
     public RenameStyle RenameStyle { get; init; } = RenameStyle.Professional;
