@@ -26,6 +26,9 @@ builder.Services.AddSingleton<BackupArchiveService>();
 builder.Services.AddSingleton<ImageCacheManager>();
 builder.Services.AddSingleton<ImmichProxyRegistry>();
 builder.Services.AddHostedService<BackupCleanupService>();
+// One instance serves both the Message page (sending) and the background restore loop.
+builder.Services.AddSingleton<FrameMessageService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<FrameMessageService>());
 
 var app = builder.Build();
 

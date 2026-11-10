@@ -9,6 +9,16 @@
   <ItemGroup>
     <PackageReference Include="Anthropic" Version="12.55.0" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.14" />
+    <PackageReference Include="SkiaSharp" Version="4.153.1" />
+    <!-- SkiaSharp's own package carries no Linux native library; this one does (x64 and arm64,
+         for the Docker image and a Raspberry Pi) and needs no fontconfig in the container. -->
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="4.153.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The message picture's font (see MessageImageRenderer). Inter, SIL Open Font License 1.1,
+         license text alongside. -->
+    <EmbeddedResource Include="Resources\Fonts\Inter-SemiBold.ttf" LogicalName="Inter-SemiBold.ttf" />
   </ItemGroup>
 
 </Project>

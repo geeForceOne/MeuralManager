@@ -237,6 +237,39 @@ public sealed class MeuralApiClient : IDisposable
         return new DeleteOutcome(response.IsSuccessStatusCode, response.StatusCode);
     }
 
+    // A frame's playback settings - GET devices/{id}, documented in Meural's Postman API
+    // documentation and used the same way by ha-meural's pymeural.py (get_device).
+    public async Task<MeuralDeviceSettings> GetDeviceSettingsAsync(long deviceId, CancellationToken ct = default)
+    {
+        await EnsureFreshTokenAsync(ct);
+        using var response = await _http.GetAsync($"{ApiBaseUrl}devices/{deviceId}", ct);
+        var body = await response.Content.ReadAsStringAsync(ct);
+
+        if (!response.IsSuccessStatusCode)
+            throw new MeuralApiException($"GET devices/{deviceId} returned {(int)response.StatusCode}: {body}");
+
+        var envelope = JsonSerializer.Deserialize<DeviceSettingsEnvelope>(body)
+            ?? throw new MeuralApiException("Failed to deserialize device response.");
+        return envelope.Data ?? throw new MeuralApiException("Device response had no data.");
+    }
+
+    // PUT devices/{id} with only the fields to change. JSON body, as ha-meural's update_device
+    // sends it (its pause button is exactly {"imageDuration": 0}); field names are from the
+    // Postman documentation. Null settings are left out rather than sent as null.
+    public async Task UpdateDeviceSettingsAsync(long deviceId, MeuralDeviceSettings settings, CancellationToken ct = default)
+    {
+        await EnsureFreshTokenAsync(ct);
+        var body = new Dictionary<string, object>();
+        if (settings.ImageDuration is int duration)
+            body["imageDuration"] = duration;
+        if (settings.SchedulerEnabled is bool scheduler)
+            body["schedulerEnabled"] = scheduler;
+        if (settings.GalleryRotation is bool rotation)
+            body["galleryRotation"] = rotation;
+
+        await PutJsonAsync<DeviceSettingsEnvelope>($"devices/{deviceId}", body, ct);
+    }
+
     public async Task<MeuralItem> UploadItemAsync(string filePath, string? name, IProgress<string>? progress = null, CancellationToken ct = default)
     {
         await EnsureFreshTokenAsync(ct);

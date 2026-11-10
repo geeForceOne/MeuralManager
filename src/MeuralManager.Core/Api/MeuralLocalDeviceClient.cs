@@ -67,6 +67,11 @@ public static class MeuralLocalDeviceClient
     public static Task<bool> ChangeGalleryAsync(string localIp, long galleryId, CancellationToken ct = default) =>
         SendCommandAsync(localIp, $"control_command/change_gallery/{galleryId}", ct);
 
+    // Shows one item of the gallery that's playing - ha-meural's send_change_item, which its
+    // media_player uses only for an item in the current gallery.
+    public static Task<bool> ChangeItemAsync(string localIp, long itemId, CancellationToken ct = default) =>
+        SendCommandAsync(localIp, $"control_command/change_item/{itemId}", ct);
+
     // Null means the frame couldn't be reached at all (off, unplugged, off the LAN) - distinct
     // from a reachable frame that reports itself asleep (false vs true).
     public static async Task<bool?> GetSleepStatusAsync(string localIp, CancellationToken ct = default)

@@ -1265,6 +1265,129 @@ a { color: var(--accent-strong); }
     transform: translateX(18px);
 }
 
+/* ---------- Message (Message.razor) ---------- */
+
+.message-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 20px;
+    align-items: start;
+}
+
+.message-layout .settings-group {
+    margin-bottom: 20px;
+}
+
+.message-text {
+    resize: vertical;
+    min-height: 96px;
+    line-height: 1.4;
+}
+
+.message-swatches,
+.message-durations {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.message-swatch {
+    width: 44px;
+    height: 44px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    font: 600 0.95rem var(--font-sans);
+    cursor: pointer;
+}
+
+.message-swatch[aria-pressed="true"] {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.message-check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 400;
+    font-size: 0.94rem;
+    color: var(--text);
+    cursor: pointer;
+}
+
+/* .field input is full width for text boxes; a checkbox keeps its own size. */
+.message-check input {
+    width: auto;
+    margin: 0;
+    accent-color: var(--accent);
+}
+
+.message-check .muted {
+    font-size: 0.82rem;
+}
+
+.message-chip {
+    font: 500 0.86rem var(--font-sans);
+    color: var(--text);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 6px 12px;
+    cursor: pointer;
+}
+
+.message-chip:hover {
+    border-color: var(--accent);
+}
+
+.message-chip[aria-pressed="true"] {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent-strong);
+}
+
+.message-until {
+    width: auto;
+    padding: 5px 10px;
+}
+
+.message-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 6px;
+}
+
+.message-preview-images {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 16px;
+}
+
+.message-preview-image {
+    display: block;
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-md);
+    max-width: 100%;
+}
+
+.message-preview-image.is-wide {
+    width: 100%;
+    max-width: 480px;
+}
+
+.message-preview-image.is-tall {
+    height: 360px;
+}
+
+.message-error {
+    color: var(--danger-strong);
+    font-size: 0.86rem;
+    margin-top: 4px;
+}
+
 /* ---------- Playlists layout ---------- */
 
 .playlist-toolbar-bar {
@@ -2070,6 +2193,7 @@ a { color: var(--accent-strong); }
     .signed-in-email { display: none; }
     .image-cache-progress { width: 90px; padding: 0; }
     .image-cache-progress-label { display: none; }
+    .message-layout { grid-template-columns: minmax(0, 1fr); }
 
     .app-main {
         padding: 20px;

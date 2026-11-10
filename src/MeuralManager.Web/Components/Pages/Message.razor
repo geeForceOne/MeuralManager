@@ -1,0 +1,334 @@
+@page "/message"
+@implements IDisposable
+@inject MeuralSessionState Session
+@inject FrameMessageService FrameMessages
+@inject IJSRuntime JS
+
+<div class="page-header">
+    <h1>Message</h1>
+    <p class="page-subtitle">Put a message on your frames for a while. They stay on it, then go back to what they were showing.</p>
+</div>
+
+@if (!Session.HasScanned)
+{
+    <p class="empty-state">Scan your account from the <a href="/">Dashboard</a> first.</p>
+}
+else
+{
+    <div class="message-layout">
+        <div class="settings-group message-form">
+            <label class="field">
+                <span>Message</span>
+                <textarea class="text-input message-text" rows="4" maxlength="@MaxLength" placeholder="Dinner's at 7"
+                          @bind="_text" @bind:event="oninput" @bind:after="QueuePreview"></textarea>
+            </label>
+
+            <div class="field">
+                <span>Color</span>
+                <div class="message-swatches">
+                    @foreach (var palette in MessagePalette.All)
+                    {
+                        <button type="button" class="message-swatch" title="@palette.Name" aria-label="@palette.Name"
+                                aria-pressed="@(palette == _palette ? "true" : "false")"
+                                style="background:@palette.Background; color:@palette.Text"
+                                @onclick="() => SelectPalette(palette)">Aa</button>
+                    }
+                </div>
+            </div>
+
+            <div class="field">
+                <span>Frames</span>
+                @foreach (var device in Devices)
+                {
+                    <label class="message-check">
+                        <input type="checkbox" checked="@_selected.Contains(device.Id!.Value)" @onchange="() => ToggleFrame(device.Id!.Value)" />
+                        <span>@FrameName(device)</span>
+                        <span class="muted">@(Orientation(device) == FrameOrientation.Horizontal ? "horizontal" : "vertical")</span>
+                    </label>
+                }
+            </div>
+
+            <div class="field">
+                <span>How long</span>
+                <div class="message-durations">
+                    @foreach (var (label, minutes) in Durations)
+                    {
+                        <button type="button" class="message-chip" aria-pressed="@(_minutes == minutes ? "true" : "false")"
+                                @onclick="() => _minutes = minutes">@label</button>
+                    }
+                    <button type="button" class="message-chip" aria-pressed="@(_minutes is null ? "true" : "false")"
+                            @onclick="() => _minutes = null">Until…</button>
+                    @if (_minutes is null)
+                    {
+                        <input type="time" class="text-input message-until" aria-label="Until" @bind="_untilTime" />
+                    }
+                </div>
+            </div>
+
+            <div class="message-actions">
+                <button class="btn btn-primary" @onclick="SendAsync" disabled="@(!CanSend)">
+                    @(_sending ? "Sending…" : "Send")
+                </button>
+                @if (_sending)
+                {
+                    <span class="spinner spinner-inline"></span>
+                    <span class="muted">@_status</span>
+                }
+            </div>
+        </div>
+
+        <div class="settings-group message-preview">
+            <h2>Preview</h2>
+            <div class="message-preview-images">
+                @foreach (var (orientation, src) in _previews)
+                {
+                    <img class="message-preview-image @(orientation == FrameOrientation.Horizontal ? "is-wide" : "is-tall")"
+                         src="@src" alt="Preview of the message" />
+                }
+            </div>
+        </div>
+    </div>
+
+    @if (_pinned.Count > 0)
+    {
+        <div class="settings-group">
+            <h2>On your frames now</h2>
+            @foreach (var message in _pinned.OrderBy(m => m.DeviceName))
+            {
+                <div class="setting-row">
+                    <div>
+                        <div class="setting-label">@message.DeviceName</div>
+                        <div class="muted setting-description">
+                            “@Shorten(message.Text)” until @FormatLocal(message.UntilUtc)
+                        </div>
+                        @if (message.LastError is not null)
+                        {
+                            <div class="message-error">Couldn't put the frame back yet: @message.LastError</div>
+                        }
+                    </div>
+                    <button class="btn btn-secondary" disabled="@(_restoring.Contains(message.DeviceId))" @onclick="() => RestoreNowAsync(message)">
+                        @(_restoring.Contains(message.DeviceId) ? "Restoring…" : "Restore now")
+                    </button>
+                </div>
+            }
+        </div>
+    }
+}
+
+<ActivityLogPanel Log="_log" />
+<Toast @ref="_toast" />
+
+@code {
+    private const int MaxLength = 280;
+
+    private static readonly (string Label, int Minutes)[] Durations =
+    [
+        ("15 min", 15), ("30 min", 30), ("1 hour", 60), ("2 hours", 120), ("4 hours", 240), ("8 hours", 480), ("24 hours", 1440),
+    ];
+
+    private string _text = "";
+    private MessagePalette _palette = MessagePalette.Black;
+    private readonly HashSet<long> _selected = [];
+    // Null = "Until…" a clock time instead of a fixed length.
+    private int? _minutes = 60;
+    private TimeOnly _untilTime = new(22, 0);
+    private bool _sending;
+    private string? _status;
+    private readonly HashSet<long> _restoring = [];
+    private List<PinnedMessage> _pinned = [];
+    private List<(FrameOrientation Orientation, string Src)> _previews = [];
+    private int _offsetMinutes;
+    private CancellationTokenSource? _previewCts;
+    private readonly ActivityLog _log = new();
+    private Toast _toast = null!;
+
+    private List<MeuralDevice> Devices =>
+        (Session.AllDevicesCache ?? []).Where(d => d.Id.HasValue).OrderBy(FrameName, StringComparer.OrdinalIgnoreCase).ToList();
+
+    private bool CanSend => !_sending && !string.IsNullOrWhiteSpace(_text) && _selected.Count > 0;
+
+    private static string FrameName(MeuralDevice device) => device.Alias ?? $"Frame {device.Id}";
+
+    private FrameOrientation Orientation(MeuralDevice device) =>
+        Session.FrameOrientations.GetValueOrDefault(device.Id!.Value, FrameOrientation.Vertical);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _log.Changed += HandleLogChanged;
+        FrameMessages.Changed += HandleMessagesChanged;
+
+        // Every frame is ticked to begin with - a message is usually for the whole household,
+        // and it's one click to untick one.
+        foreach (var device in Devices)
+            _selected.Add(device.Id!.Value);
+
+        await ReloadPinnedAsync();
+        RenderPreviews();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+
+        _offsetMinutes = await JS.InvokeAsync<int>("meuralLocalTime.offsetMinutes");
+        StateHasChanged();
+    }
+
+    private void HandleLogChanged() => InvokeAsync(StateHasChanged);
+
+    private void HandleMessagesChanged(string accountKey)
+    {
+        if (Session.Email is { } email && accountKey == FrameMessageService.AccountKey(email))
+            InvokeAsync(async () =>
+            {
+                await ReloadPinnedAsync();
+                StateHasChanged();
+            });
+    }
+
+    private async Task ReloadPinnedAsync() =>
+        _pinned = Session.Email is { } email ? await FrameMessages.GetPinnedAsync(email) : [];
+
+    private void SelectPalette(MessagePalette palette)
+    {
+        _palette = palette;
+        RenderPreviews();
+    }
+
+    private void ToggleFrame(long deviceId)
+    {
+        if (!_selected.Remove(deviceId))
+            _selected.Add(deviceId);
+        RenderPreviews();
+    }
+
+    // Typing re-renders the preview after a short pause rather than on every keystroke.
+    private async Task QueuePreview()
+    {
+        _previewCts?.Cancel();
+        var cts = _previewCts = new CancellationTokenSource();
+        try
+        {
+            await Task.Delay(250, cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        RenderPreviews();
+    }
+
+    // The same renderer the frame's picture comes from, at a quarter of the size - one preview per
+    // orientation among the ticked frames (a vertical one when none is ticked).
+    private void RenderPreviews()
+    {
+        var orientations = Devices.Where(d => _selected.Contains(d.Id!.Value)).Select(Orientation).Distinct().Order().ToList();
+        if (orientations.Count == 0)
+            orientations.Add(FrameOrientation.Vertical);
+
+        var text = string.IsNullOrWhiteSpace(_text) ? "Dinner's at 7" : _text;
+        _previews = orientations.Select(o =>
+        {
+            var (width, height) = o == FrameOrientation.Horizontal
+                ? (MessageImageRenderer.LongSide / 4, MessageImageRenderer.ShortSide / 4)
+                : (MessageImageRenderer.ShortSide / 4, MessageImageRenderer.LongSide / 4);
+            var jpeg = MessageImageRenderer.RenderJpeg(text, _palette, width, height, quality: 85);
+            return (o, "data:image/jpeg;base64," + Convert.ToBase64String(jpeg));
+        }).ToList();
+    }
+
+    private DateTime UntilUtc()
+    {
+        var nowUtc = DateTime.UtcNow;
+        if (_minutes is int minutes)
+            return nowUtc.AddMinutes(minutes);
+
+        // The next time the viewer's clock shows _untilTime - later today, or tomorrow.
+        var localNow = nowUtc.AddMinutes(-_offsetMinutes);
+        var localUntil = localNow.Date + _untilTime.ToTimeSpan();
+        if (localUntil <= localNow)
+            localUntil = localUntil.AddDays(1);
+        return localUntil.AddMinutes(_offsetMinutes);
+    }
+
+    private string FormatLocal(DateTime utc)
+    {
+        var local = utc.AddMinutes(-_offsetMinutes);
+        var today = DateTime.UtcNow.AddMinutes(-_offsetMinutes).Date;
+        return local.Date == today ? local.ToString("HH:mm") : local.ToString("ddd HH:mm");
+    }
+
+    private static string Shorten(string text)
+    {
+        var oneLine = string.Join(" ", text.Split(['\n', '\r'], StringSplitOptions.RemoveEmptyEntries));
+        return oneLine.Length <= 60 ? oneLine : oneLine[..57] + "…";
+    }
+
+    private async Task SendAsync()
+    {
+        if (!CanSend || Session.Client is not { } client || Session.Email is not { } email)
+            return;
+
+        var targets = Devices
+            .Where(d => _selected.Contains(d.Id!.Value))
+            .Select(d => new FrameMessageTarget(d.Id!.Value, FrameName(d), d.LocalIp, Orientation(d)))
+            .ToList();
+
+        _sending = true;
+        _status = "Sending…";
+        var progress = new Progress<string>(line =>
+        {
+            _status = line;
+            _log.Append(line);
+        });
+
+        try
+        {
+            var sent = await FrameMessages.SendAsync(email, client, _text.Trim(), _palette, targets, UntilUtc(), progress, CancellationToken.None);
+            if (sent == targets.Count)
+                _toast.ShowSuccess(sent == 1 ? "The message is on the frame." : $"The message is on {sent} frames.");
+            else
+                _toast.ShowError(sent == 0 ? "The message couldn't be sent." : $"The message reached {sent} of {targets.Count} frames.");
+        }
+        catch (Exception ex)
+        {
+            _log.Append($"Sending failed: {ex.Message}");
+            _toast.ShowError($"Sending failed: {ex.Message}");
+        }
+        finally
+        {
+            _sending = false;
+            await ReloadPinnedAsync();
+        }
+    }
+
+    private async Task RestoreNowAsync(PinnedMessage message)
+    {
+        if (Session.Client is not { } client || Session.Email is not { } email)
+            return;
+
+        _restoring.Add(message.DeviceId);
+        try
+        {
+            await FrameMessages.RestoreNowAsync(email, client, message.DeviceId, _log.AsProgress());
+            await ReloadPinnedAsync();
+            if (_pinned.Find(m => m.DeviceId == message.DeviceId) is { LastError: { } error })
+                _toast.ShowError($"{message.DeviceName}: {error}");
+            else
+                _toast.ShowSuccess($"{message.DeviceName} is back to normal.");
+        }
+        finally
+        {
+            _restoring.Remove(message.DeviceId);
+        }
+    }
+
+    public void Dispose()
+    {
+        _log.Changed -= HandleLogChanged;
+        FrameMessages.Changed -= HandleMessagesChanged;
+        _previewCts?.Cancel();
+        _previewCts?.Dispose();
+    }
+}
