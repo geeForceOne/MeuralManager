@@ -31,6 +31,7 @@ Never run `git commit` or `git push` unless the user explicitly asks for it in t
 
 When the user does ask you to commit:
 - Write clean, specific commit messages describing *why*, not just what changed.
+- Commit as `geeForceOne <1780268+geeForceOne@users.noreply.github.com>`, never with a real name or a Gmail address (the repo is public).
 
 ## Architecture
 
@@ -76,4 +77,5 @@ Two projects, split so all Meural networking/business logic is reusable and UI-a
 - **Dialogs never close on a click outside them** (a stray click shouldn't throw away what was typed or a crop that was set up); Cancel, or Escape where offered, does. This applies to every modal: `ConfirmDialog`, `PromptDialog`, `CropDialog`, `AddExistingItemsModal`.
 - **Gotcha:** Blazor renders a bool attribute value `true` as an empty attribute and drops it for `false`, so `aria-pressed="@x"` never matches `[aria-pressed="true"]`. Write `aria-pressed="@(x ? "true" : "false")"` (same for `aria-expanded`, `aria-checked`).
 - **Gotcha:** a component callback passed as a plain `Func<...>` (not `EventCallback`) doesn't re-render the parent; call `StateHasChanged` after it changes state.
+- **Gotcha:** numbers written into SVG attributes must use the invariant culture (`FormattableString.Invariant`, `ToString(CultureInfo.InvariantCulture)`); under a German/Swiss culture "6.2" becomes "6,2" and the shape disappears.
 - **Gotcha:** table cells are never `display: flex` (it breaks the row lines); put a `<div>` with the flex layout inside the cell.
