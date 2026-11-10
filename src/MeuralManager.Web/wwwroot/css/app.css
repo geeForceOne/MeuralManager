@@ -2185,6 +2185,28 @@ a { color: var(--accent-strong); }
     font-size: 1.15rem;
 }
 
+/* Image Backup: "Restore as playlist" under an open gallery's title */
+.restore-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 12px;
+    margin-bottom: 14px;
+    flex-shrink: 0;
+}
+
+.restore-row .muted {
+    font-size: 0.85rem;
+}
+
+.restore-status {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 48ch;
+}
+
 /* Album and person cards */
 
 .immich-card-grid {

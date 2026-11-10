@@ -19,7 +19,7 @@ else if (!Session.IsAuthenticated)
 else
 {
     <div class="app-shell">
-        <NavMenu Email="@Session.Email" OnSignOut="SignOutAsync" ImmichEnabled="_immichEnabled" />
+        <NavMenu Email="@Session.Email" OnSignOut="SignOutAsync" ImmichEnabled="_immichEnabled" ImageBackupEnabled="_imageBackupEnabled" />
         <div class="app-main-wrap">
             <main class="app-main">
                 <WhatsNewBanner />
@@ -69,6 +69,7 @@ else
     private bool _checkingSession = true;
     private bool _remoteControlEnabled = true;
     private bool _immichEnabled;
+    private bool _imageBackupEnabled;
     private ErrorBoundary? _errorBoundary;
 
     private void RecoverFromError() => _errorBoundary?.Recover();
@@ -143,6 +144,11 @@ else
         var prefs = await Preferences.LoadAsync();
         _remoteControlEnabled = prefs.RemoteControlEnabled;
         _immichEnabled = prefs.ImmichEnabled;
+        _imageBackupEnabled = prefs.ImageBackupEnabled;
+        // The client does the checking itself, so it's told whenever the setting is (re)loaded:
+        // on sign-in and after every change on the Settings page.
+        if (Session.Client is { } client)
+            client.SmartTimeouts = prefs.SmartTimeouts;
     }
 
     private async Task SignOutAsync()

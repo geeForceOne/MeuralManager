@@ -21,4 +21,8 @@ public sealed class MeuralChallengeRequiredException(PendingChallenge challenge)
     public PendingChallenge Challenge { get; } = challenge;
 }
 
-public sealed class MeuralApiException(string message) : Exception(message);
+// StatusCode is set when Meural answered with an error status (null for a malformed reply).
+public sealed class MeuralApiException(string message, System.Net.HttpStatusCode? statusCode = null) : Exception(message)
+{
+    public System.Net.HttpStatusCode? StatusCode { get; } = statusCode;
+}

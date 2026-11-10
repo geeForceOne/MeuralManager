@@ -1,0 +1,813 @@
+@implements IDisposable
+@inject MeuralSessionState Session
+@inject UserPreferencesStore Preferences
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<div class="page-header">
+    <h1>@Source.Name</h1>
+    <p class="page-subtitle">@Source.Subtitle</p>
+</div>
+
+@if (!_ready)
+{
+    <div class="photo-loading"><span class="spinner spinner-inline"></span> Loading…</div>
+}
+else if (!Session.HasScanned)
+{
+    <p class="empty-state">Scan your account from the <a href="/">Dashboard</a> first.</p>
+}
+else if (_immich is null)
+{
+    <p class="empty-state">
+        @(_connectionError ?? $"{Source.Name} isn't set up yet.")
+        Enter its server URL and @Source.KeyLabel in <a href="/settings">Settings</a>.
+    </p>
+}
+else
+{
+    <div class="tab-bar" role="tablist">
+        <button type="button" role="tab" class="tab @(_tab == Tab.Photos ? "active" : "")" @onclick="() => SwitchTabAsync(Tab.Photos)">Photos</button>
+        <button type="button" role="tab" class="tab @(_tab == Tab.Albums ? "active" : "")" @onclick="() => SwitchTabAsync(Tab.Albums)">@Source.AlbumsLabel</button>
+        @if (Source.HasPeople)
+        {
+            <button type="button" role="tab" class="tab @(_tab == Tab.People ? "active" : "")" @onclick="() => SwitchTabAsync(Tab.People)">People</button>
+        }
+    </div>
+
+    <div class="playlist-layout immich-layout" id="immichSplit">
+    <div class="pane pane-browse">
+    @if (_tab == Tab.Photos)
+    {
+        <div class="immich-filters">
+            <label class="field">
+                <span>From</span>
+                <input type="date" class="text-input" @bind="_from" @bind:after="ReloadAsync" />
+            </label>
+            <label class="field">
+                <span>To</span>
+                <input type="date" class="text-input" @bind="_to" @bind:after="ReloadAsync" />
+            </label>
+            <label class="field immich-search-field">
+                <span>Search <span class="muted">@Source.SearchHint</span></span>
+                <input class="text-input" @bind="_query" @bind:after="ReloadAsync" placeholder="@Source.SearchPlaceholder" />
+            </label>
+            @if (_from is not null || _to is not null || !string.IsNullOrWhiteSpace(_query))
+            {
+                <button type="button" class="btn btn-ghost btn-sm" @onclick="ClearFiltersAsync">Clear filters</button>
+            }
+        </div>
+    }
+    else if (_tab == Tab.Albums && _openAlbum is null)
+    {
+        @if (_listError is not null)
+        {
+            <p class="immich-error">@_listError</p>
+        }
+        else if (_loadingList || _albums is null)
+        {
+            <div class="photo-loading"><span class="spinner spinner-inline"></span> Loading @AlbumsLower…</div>
+        }
+        else if (_albums.Count == 0)
+        {
+            <p class="empty-state">No @AlbumsLower found.</p>
+        }
+        else
+        {
+            <div class="immich-card-grid">
+                @foreach (var album in _albums)
+                {
+                    <button type="button" class="immich-card" @key="album.Id" @onclick="() => OpenAlbumAsync(album)">
+                        @if (album.AlbumThumbnailAssetId is { Length: > 0 } thumbId)
+                        {
+                            <img src="immich-proxy/@_proxyToken/asset/@thumbId/thumbnail" loading="lazy" alt="" />
+                        }
+                        else
+                        {
+                            <div class="thumb-placeholder"></div>
+                        }
+                        <span class="immich-card-name">@(album.AlbumName ?? "(untitled)")</span>
+                        <span class="immich-card-meta muted">@album.AssetCount photo@(album.AssetCount == 1 ? "" : "s")</span>
+                    </button>
+                }
+            </div>
+        }
+    }
+    else if (_tab == Tab.People && _openPerson is null)
+    {
+        @if (_listError is not null)
+        {
+            <p class="immich-error">@_listError</p>
+        }
+        else if (_loadingList || _people is null)
+        {
+            <div class="photo-loading"><span class="spinner spinner-inline"></span> Loading people…</div>
+        }
+        else
+        {
+            var unnamedCount = _people.Count(p => !p.HasName);
+            @if (unnamedCount > 0)
+            {
+                <label class="immich-toggle">
+                    <input type="checkbox" @bind="_showUnnamed" />
+                    <span>Show @unnamedCount unnamed face@(unnamedCount == 1 ? "" : "s")</span>
+                </label>
+            }
+
+            var visiblePeople = _people.Where(p => p.HasName || _showUnnamed).ToList();
+            @if (visiblePeople.Count == 0)
+            {
+                <p class="empty-state">No named people found.</p>
+            }
+            else
+            {
+                <div class="immich-card-grid immich-people-grid">
+                    @foreach (var person in visiblePeople)
+                    {
+                        <button type="button" class="immich-card immich-person" @key="person.Id" @onclick="() => OpenPersonAsync(person)">
+                            <img src="immich-proxy/@_proxyToken/person/@person.Id" loading="lazy" alt="" />
+                            <span class="immich-card-name">@(person.HasName ? person.Name : "Unnamed")</span>
+                        </button>
+                    }
+                </div>
+            }
+        }
+    }
+
+    @if (ShowingGrid)
+    {
+        @if (_tab != Tab.Photos)
+        {
+            <div class="immich-back-row">
+                <button type="button" class="btn btn-ghost btn-sm" @onclick="BackToList">← @(_tab == Tab.Albums ? $"All {AlbumsLower}" : "All people")</button>
+                <h2>@(_tab == Tab.Albums ? _openAlbum?.AlbumName : _openPerson?.Name)</h2>
+            </div>
+
+            @if (_tab == Tab.Albums && Source.CanRestoreAlbums && _openAlbum is not null)
+            {
+                <div class="restore-row">
+                    @if (_restore.Busy || _restoreLoading)
+                    {
+                        <span class="spinner spinner-inline"></span>
+                        <span class="muted restore-status">@(_restoreLoading ? $"Reading the {Source.AlbumWord}…" : RestoreStatus)</span>
+                        @if (_restore.Busy)
+                        {
+                            <button type="button" class="btn btn-ghost btn-sm" @onclick="_restore.Cancel">Cancel</button>
+                        }
+                    }
+                    else
+                    {
+                        <button type="button" class="btn btn-primary btn-sm" @onclick="RestoreAlbumAsync" disabled="@_basket.Busy">Restore as playlist</button>
+                        @if (_restore.Entries.Count > 0 && _restoreAlbumId == _openAlbum.Id)
+                        {
+                            <button type="button" class="btn btn-secondary btn-sm" @onclick="RetryRestoreAsync">Retry @_restore.Entries.Count failed</button>
+                        }
+                        <span class="muted">
+                            Uploads all @_openAlbum.AssetCount image@(_openAlbum.AssetCount == 1 ? "" : "s") into a Meural playlist called
+                            “@PhotoSource.PlaylistNameFor(_openAlbum.AlbumName, _openAlbum.Description)”.
+                        </span>
+                    }
+                </div>
+            }
+        }
+
+        @if (_viewError is not null)
+        {
+            <p class="immich-error">@_viewError</p>
+        }
+
+        <ImmichPhotoGrid Photos="_assets" ProxyToken="@_proxyToken" Selected="_basket.SelectedIds" Uploaded="_uploadedIds"
+                         Previewing="@_basket.PreviewEntry?.Id" Comparing="@_basket.CompareEntry?.Id"
+                         Grouped="@(_tab != Tab.Photos || string.IsNullOrWhiteSpace(_query))"
+                         HasMore="@(_nextPage is not null)" Loading="_loadingAssets"
+                         OnPreview="PreviewAsset" OnToggle="OnTileToggle" OnToggleDay="OnDayToggle"
+                         OnLoadMore="() => LoadAssetsAsync(reset: false)" />
+    }
+    </div>
+
+    <div class="split-handle" data-resize="next" data-pane-key="basket"></div>
+
+    <UploadBasketPane Basket="_basket" CropEnabled="_cropFeatureEnabled" UploadedIds="_uploadedIds"
+                      EmptyText="Nothing in the basket yet. Click ✓ on a photo (or shift-click for a range) to add it."
+                      OnCreatePlaylist="CreatePlaylistAsync" OnUpload="UploadSelectedAsync" />
+
+    <div class="split-handle" data-resize="next" data-pane-key="preview"></div>
+
+    <UploadPreviewPane Basket="_basket" UploadedIds="_uploadedIds" PreviewUrl="PreviewUrl"
+                       EmptyText="Click a photo to preview it" />
+    </div>
+}
+
+@if (_log.Entries.Count > 0)
+{
+    <ActivityLogPanel Log="_log" />
+}
+<ConfirmDialog @ref="_confirm" />
+<PromptDialog @ref="_prompt" />
+<CropDialog @ref="_cropDialog" />
+<Toast @ref="_toast" />
+
+@code {
+    // Which library this page browses - Immich or MeuralImageBackup (see PhotoSource). The thin
+    // pages Pages/Immich.razor and Pages/ImageBackup.razor each pass theirs.
+    [Parameter, EditorRequired] public PhotoSource Source { get; set; } = null!;
+
+    private enum Tab { Photos, Albums, People }
+
+    private Tab _tab = Tab.Photos;
+    private bool _ready;
+    private bool _cropFeatureEnabled = true;
+    private ImmichApiClient? _immich;
+    private string? _connectionError;
+    private string _proxyToken = "";
+
+    // The one photo list on screen, whichever tab it came from - the Photos timeline, an opened
+    // album, or an opened person are all just a different filter over the same paged query.
+    private readonly List<ImmichAsset> _assets = [];
+    private int? _nextPage;
+    private bool _loadingAssets;
+    private string? _viewError;
+    private CancellationTokenSource? _loadCts;
+
+    private DateTime? _from;
+    private DateTime? _to;
+    private string? _query;
+
+    private List<ImmichAlbum>? _albums;
+    private ImmichAlbum? _openAlbum;
+    private List<ImmichPerson>? _people;
+    private ImmichPerson? _openPerson;
+    private bool _showUnnamed;
+    private bool _loadingList;
+    private string? _listError;
+
+    // The basket (what's picked for upload, the names, the target playlist, AI naming, the upload
+    // itself) is the shared UploadBasket - it keeps the picked photos as entries, so they survive
+    // a tab switch even though they're no longer in _assets.
+    private UploadBasket _basket = null!;
+    private string? _lastClickedId;
+    private HashSet<string> _uploadedIds = [];
+
+    private DotNetObjectReference<PhotoSourceBrowser>? _splitterRef;
+
+    // Restoring a whole gallery (Image Backup only) runs through a second basket of its own, so it
+    // never touches what the user has picked in the main one. What fails stays in it for a Retry.
+    private UploadBasket _restore = null!;
+    private bool _restoreLoading;
+    private string? _restoreAlbumId;
+
+    private string AlbumsLower => Source.AlbumsLabel.ToLowerInvariant();
+
+    // The newest activity-log line, as the restore's running status.
+    private string RestoreStatus => _log.Entries.Count > 0 ? _log.Entries[^1].Message : "Restoring…";
+    private bool _splitterInit;
+
+    private readonly ActivityLog _log = new();
+    private ConfirmDialog _confirm = null!;
+    private PromptDialog _prompt = null!;
+    private CropDialog _cropDialog = null!;
+    private Toast _toast = null!;
+
+    private BasketEntry ToEntry(ImmichAsset asset) => new(
+        asset.Id,
+        $"immich-proxy/{_proxyToken}/asset/{asset.Id}/thumbnail",
+        asset.OriginalFileName ?? asset.Id,
+        TakenLabel(asset),
+        asset);
+
+    private static string? TakenLabel(ImmichAsset asset) =>
+        (asset.LocalDateTime ?? asset.FileCreatedAt)?.ToString("ddd, MMM d, yyyy h:mm tt");
+
+    // The ~1440px preview rendition - always a JPEG, and much lighter than the original.
+    private string PreviewUrl(BasketEntry entry) => $"immich-proxy/{_proxyToken}/asset/{entry.Id}/preview";
+
+    private bool ShowingGrid =>
+        _tab == Tab.Photos || (_tab == Tab.Albums && _openAlbum is not null) || (_tab == Tab.People && _openPerson is not null);
+
+    private ImmichAssetFilter CurrentFilter => _tab switch
+    {
+        Tab.Albums when _openAlbum is not null => new ImmichAssetFilter { AlbumId = _openAlbum.Id },
+        Tab.People when _openPerson is not null => new ImmichAssetFilter { PersonId = _openPerson.Id },
+        _ => new ImmichAssetFilter
+        {
+            // Whole days, in the server's local time: "to" is inclusive, so it runs to the start
+            // of the next day.
+            TakenAfter = _from is DateTime from ? new DateTimeOffset(DateTime.SpecifyKind(from.Date, DateTimeKind.Local)) : null,
+            TakenBefore = _to is DateTime to ? new DateTimeOffset(DateTime.SpecifyKind(to.Date.AddDays(1), DateTimeKind.Local)) : null,
+            Query = _query,
+        },
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        _log.Changed += HandleStateChanged;
+        _basket = new UploadBasket(Session, _log, msg => _toast.ShowError(msg), msg => _toast.ShowSuccess(msg), LoadAiImageAsync);
+        _basket.Changed += HandleStateChanged;
+        _restore = new UploadBasket(Session, _log, msg => _toast.ShowError(msg), msg => _toast.ShowSuccess(msg), LoadAiImageAsync);
+        _restore.Changed += HandleStateChanged;
+
+        var prefs = await Preferences.LoadAsync();
+        if (!Source.IsEnabled(prefs))
+        {
+            // Switched off in Settings - this page shouldn't be reachable by typing the URL either.
+            Nav.NavigateTo("/", replace: true);
+            return;
+        }
+
+        _cropFeatureEnabled = prefs.CropFeatureEnabled;
+        await _basket.LoadAiSettingsAsync();
+
+        try
+        {
+            _immich = await Session.GetPhotoSourceClientAsync(Source);
+        }
+        catch (Exception ex)
+        {
+            _connectionError = $"Couldn't use the saved {Source.Name} settings: {ex.Message}";
+        }
+
+        // A saved key that can no longer be decrypted looks exactly like "not set up" here - say so.
+        if (_immich is null && _connectionError is null && (await Session.GetUnreadableSecretsAsync()).For(Source))
+            _connectionError = $"The saved {Source.Name} {Source.KeyLabel} can't be read any more.";
+
+        _proxyToken = Session.GetProxyToken(Source) ?? "";
+        _uploadedIds = await Session.LoadUploadedAssetIdsAsync(Source);
+        _ready = true;
+
+        if (_immich is not null && Session.HasScanned)
+            await LoadAssetsAsync(reset: true);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // The three-pane layout only exists once Immich is connected, so this keeps trying after
+        // each render until meuralSplitter.init finds the container.
+        if (_splitterInit || !_ready || _immich is null || !Session.HasScanned)
+            return;
+
+        _splitterRef ??= DotNetObjectReference.Create(this);
+        var prefs = await Preferences.LoadAsync();
+        try
+        {
+            _splitterInit = await JS.InvokeAsync<bool>("meuralSplitter.init", "immichSplit", _splitterRef,
+                new { basket = prefs.ImmichBasketPaneWidth, preview = prefs.ImmichPreviewPaneWidth });
+        }
+        catch (JSDisconnectedException)
+        {
+            // Circuit already gone.
+        }
+    }
+
+    // Invoked by splitter.js once per drag so a pane's width survives a reload.
+    [JSInvokable]
+    public async Task OnSplitterResized(string paneKey, double width)
+    {
+        var prefs = await Preferences.LoadAsync();
+        var updated = paneKey switch
+        {
+            "basket" => prefs with { ImmichBasketPaneWidth = width },
+            "preview" => prefs with { ImmichPreviewPaneWidth = width },
+            _ => prefs,
+        };
+        await Preferences.SaveAsync(updated);
+    }
+
+    private Task ReloadAsync() => LoadAssetsAsync(reset: true);
+
+    private async Task ClearFiltersAsync()
+    {
+        _from = null;
+        _to = null;
+        _query = null;
+        await LoadAssetsAsync(reset: true);
+    }
+
+    // Loads the next page of whatever CurrentFilter describes - or, with reset, starts over from
+    // page one, canceling any load still in flight so a slow, superseded response can't land on
+    // top of the new view.
+    private async Task LoadAssetsAsync(bool reset)
+    {
+        if (_immich is null)
+            return;
+
+        if (reset)
+        {
+            _loadCts?.Cancel();
+            _loadCts?.Dispose();
+            _loadCts = new CancellationTokenSource();
+            _assets.Clear();
+            _nextPage = 1;
+            _viewError = null;
+        }
+        else if (_loadingAssets || _nextPage is null || _loadCts is null)
+        {
+            return;
+        }
+
+        var cts = _loadCts!;
+        var page = _nextPage!.Value;
+        _loadingAssets = true;
+        StateHasChanged();
+        try
+        {
+            var result = await _immich.SearchAssetsAsync(CurrentFilter, page, cts.Token);
+            if (cts.IsCancellationRequested)
+                return;
+
+            _assets.AddRange(result.Assets);
+            _nextPage = result.NextPage;
+        }
+        catch (OperationCanceledException) when (cts.IsCancellationRequested)
+        {
+            // Superseded by a newer load.
+        }
+        catch (Exception ex)
+        {
+            if (!cts.IsCancellationRequested)
+            {
+                _viewError = $"Couldn't load photos: {ex.Message}";
+                _nextPage = null;
+            }
+        }
+        finally
+        {
+            // A canceled load must not clear the flag out from under the newer one that replaced it.
+            if (!cts.IsCancellationRequested)
+            {
+                _loadingAssets = false;
+                StateHasChanged();
+            }
+        }
+    }
+
+    private void CancelLoad()
+    {
+        _loadCts?.Cancel();
+        _assets.Clear();
+        _nextPage = null;
+        _loadingAssets = false;
+        _viewError = null;
+    }
+
+    private async Task SwitchTabAsync(Tab tab)
+    {
+        if (_tab == tab)
+            return;
+
+        _tab = tab;
+        switch (tab)
+        {
+            case Tab.Photos:
+                await LoadAssetsAsync(reset: true);
+                break;
+            case Tab.Albums when _openAlbum is not null:
+            case Tab.People when _openPerson is not null:
+                await LoadAssetsAsync(reset: true);
+                break;
+            case Tab.Albums:
+                CancelLoad();
+                await EnsureAlbumsAsync();
+                break;
+            case Tab.People:
+                CancelLoad();
+                await EnsurePeopleAsync();
+                break;
+        }
+    }
+
+    private async Task EnsureAlbumsAsync()
+    {
+        if (_albums is not null || _immich is null)
+            return;
+
+        _loadingList = true;
+        _listError = null;
+        StateHasChanged();
+        try
+        {
+            _albums = (await _immich.GetAlbumsAsync()).OrderBy(a => a.AlbumName, StringComparer.OrdinalIgnoreCase).ToList();
+        }
+        catch (Exception ex)
+        {
+            _listError = $"Couldn't load albums: {ex.Message}";
+        }
+        finally
+        {
+            _loadingList = false;
+        }
+    }
+
+    private async Task EnsurePeopleAsync()
+    {
+        if (_people is not null || _immich is null)
+            return;
+
+        _loadingList = true;
+        _listError = null;
+        StateHasChanged();
+        try
+        {
+            // Named people first (alphabetical), then the unnamed faces Immich has clustered.
+            _people = (await _immich.GetPeopleAsync())
+                .OrderByDescending(p => p.HasName)
+                .ThenBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            _listError = $"Couldn't load people: {ex.Message}";
+        }
+        finally
+        {
+            _loadingList = false;
+        }
+    }
+
+    private async Task OpenAlbumAsync(ImmichAlbum album)
+    {
+        _openAlbum = album;
+        await LoadAssetsAsync(reset: true);
+    }
+
+    private async Task OpenPersonAsync(ImmichPerson person)
+    {
+        _openPerson = person;
+        await LoadAssetsAsync(reset: true);
+    }
+
+    private void BackToList()
+    {
+        if (_tab == Tab.Albums)
+            _openAlbum = null;
+        else
+            _openPerson = null;
+        CancelLoad();
+    }
+
+    private void PreviewAsset(ImmichAsset asset)
+    {
+        _basket.Preview(ToEntry(asset));
+        // Also the anchor for a shift-click range, like the last photo clicked to select.
+        _lastClickedId = asset.Id;
+    }
+
+    private void OnTileToggle((ImmichAsset Asset, bool Shift) args)
+    {
+        var (asset, shift) = args;
+
+        // Shift-click selects everything between the last-clicked photo and this one, the same
+        // as Immich's own grid (and most file managers).
+        if (shift && _lastClickedId is not null)
+        {
+            var from = _assets.FindIndex(a => a.Id == _lastClickedId);
+            var to = _assets.FindIndex(a => a.Id == asset.Id);
+            if (from >= 0 && to >= 0)
+            {
+                var select = !_basket.Contains(asset.Id);
+                for (var i = Math.Min(from, to); i <= Math.Max(from, to); i++)
+                    _basket.SetSelected(ToEntry(_assets[i]), select);
+                _lastClickedId = asset.Id;
+                return;
+            }
+        }
+
+        _basket.SetSelected(ToEntry(asset), !_basket.Contains(asset.Id));
+        _lastClickedId = asset.Id;
+    }
+
+    private void OnDayToggle((DateTime Day, bool Select) args)
+    {
+        foreach (var asset in _assets.Where(a => a.TakenDate == args.Day))
+            _basket.SetSelected(ToEntry(asset), args.Select);
+    }
+
+    // What the basket sends to the AI to name a photo: the source's preview rendition.
+    private async Task<(byte[] Bytes, string MediaType)> LoadAiImageAsync(BasketEntry entry, CancellationToken ct)
+    {
+        using var response = await _immich!.GetAssetThumbnailAsync(entry.Id, "preview", ct);
+        var bytes = await response.Content.ReadAsByteArrayAsync(ct);
+        return (bytes, response.Content.Headers.ContentType?.MediaType ?? "image/jpeg");
+    }
+
+    private async Task CreatePlaylistAsync()
+    {
+        var name = await _prompt.PromptAsync("New Playlist", "Playlist name:");
+        if (!string.IsNullOrWhiteSpace(name))
+            await _basket.CreatePlaylistAsync(name);
+    }
+
+    // What the crop dialog loads - the same JPEG/PNG (or converted JPEG) that "Upload as-is" would
+    // download, via the thumbnail proxy so the API key stays server-side.
+    private string ProxyImageUrl(ImmichAsset asset) =>
+        $"immich-proxy/{_proxyToken}/image/{asset.Id}?mime={Uri.EscapeDataString(asset.OriginalMimeType ?? "")}";
+
+    private async Task UploadSelectedAsync()
+    {
+        if (_immich is null || _basket.Busy || _basket.Entries.Count == 0)
+            return;
+        if (_basket.SelectedPlaylist is null)
+        {
+            _toast.ShowError("Choose a playlist to upload into first.");
+            return;
+        }
+
+        var entries = _basket.Entries.ToList();
+
+        // Photos already sent from here (they wear the "On Meural" badge). Skipping them is the
+        // usual intent, but re-uploading is legitimate too - e.g. the earlier copy was deleted from
+        // Meural since - so it's a choice, and Cancel still means "don't do anything".
+        var already = entries.Where(e => _uploadedIds.Contains(e.Id)).ToList();
+        if (already.Count > 0)
+        {
+            var choice = await _confirm.AskChoiceAsync(
+                "Already uploaded",
+                $"{already.Count} of the {entries.Count} selected photo{(entries.Count == 1 ? " was" : "s were")} already uploaded to Meural from here. " +
+                "Skip those, or upload them again?",
+                "Skip those", "Upload again");
+            if (choice == ConfirmDialog.ConfirmChoice.Cancel)
+                return;
+
+            if (choice == ConfirmDialog.ConfirmChoice.Primary)
+            {
+                entries.RemoveAll(e => _uploadedIds.Contains(e.Id));
+                if (entries.Count == 0)
+                {
+                    _toast.ShowInfo("Nothing new to upload.");
+                    return;
+                }
+            }
+        }
+
+        await _basket.UploadAsync(entries, Source.Name, _cropFeatureEnabled, PrepareAsync, OnUploadedAsync);
+    }
+
+    // Image Backup's "Restore as playlist": every image of the open gallery into a playlist named
+    // after it - a new one, or (when one by that name exists) that one if the user says so. No crop
+    // dialog (these images came off the frames, so they're frame-shaped already) and no "already
+    // uploaded" question: a restore is meant to bring back the whole gallery.
+    private async Task RestoreAlbumAsync()
+    {
+        if (_immich is null || _openAlbum is not { } album || _restore.Busy || _restoreLoading)
+            return;
+
+        var name = PhotoSource.PlaylistNameFor(album.AlbumName, album.Description);
+        List<ImmichAsset> assets;
+        _restoreLoading = true;
+        StateHasChanged();
+        try
+        {
+            assets = await LoadAllAlbumAssetsAsync(album.Id);
+        }
+        catch (Exception ex)
+        {
+            _toast.ShowError($"Couldn't read the {Source.AlbumWord}'s images: {ex.Message}");
+            return;
+        }
+        finally
+        {
+            _restoreLoading = false;
+        }
+
+        if (assets.Count == 0)
+        {
+            _toast.ShowInfo($"This {Source.AlbumWord} has no images to restore.");
+            return;
+        }
+
+        _restore.Clear();
+        _restore.TargetGalleryId = null;
+        var existing = _restore.AllPlaylists.FirstOrDefault(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase));
+        if (existing is not null)
+        {
+            var choice = await _confirm.AskChoiceAsync(
+                "Playlist already exists",
+                $"There's already a playlist called “{existing.Name}”. Add the {assets.Count} image{(assets.Count == 1 ? "" : "s")} to it, or make a new playlist?",
+                "Add to it", "Make a new one");
+            if (choice == ConfirmDialog.ConfirmChoice.Cancel)
+                return;
+            if (choice == ConfirmDialog.ConfirmChoice.Primary)
+                _restore.TargetGalleryId = existing.Id;
+        }
+
+        if (_restore.TargetGalleryId is null)
+        {
+            await _restore.CreatePlaylistAsync(name);
+            if (_restore.TargetGalleryId is null)
+                return; // CreatePlaylistAsync already said why.
+        }
+
+        foreach (var asset in assets)
+            _restore.SetSelected(ToEntry(asset), true);
+        _restoreAlbumId = album.Id;
+
+        await _restore.UploadAsync(_restore.Entries.ToList(), Source.Name, cropEnabled: false, PrepareAsync, OnUploadedAsync,
+            failedHint: "use Retry to try them again");
+    }
+
+    private async Task RetryRestoreAsync()
+    {
+        if (_restore.Busy || _restore.Entries.Count == 0)
+            return;
+        await _restore.UploadAsync(_restore.Entries.ToList(), Source.Name, cropEnabled: false, PrepareAsync, OnUploadedAsync,
+            failedHint: "use Retry to try them again");
+    }
+
+    // Every image of an album, all pages - the grid only loads them a page at a time as it scrolls.
+    private async Task<List<ImmichAsset>> LoadAllAlbumAssetsAsync(string albumId)
+    {
+        var all = new List<ImmichAsset>();
+        int? page = 1;
+        while (page is int current)
+        {
+            var result = await _immich!.SearchAssetsAsync(new ImmichAssetFilter { AlbumId = albumId }, current);
+            all.AddRange(result.Assets);
+            page = result.NextPage;
+        }
+
+        return all;
+    }
+
+    // The source's part of an upload: get one photo as a file - cropped first if the crop tool is on -
+    // named after the basket's name for it.
+    private async Task<PreparedUpload?> PrepareAsync(BasketEntry entry, string baseName, PrepareContext context, CancellationToken ct)
+    {
+        var asset = (ImmichAsset)entry.Source;
+
+        // Same crop dialog and skip/skip-all choices as uploading a local file from the Playlists
+        // page. Canceling one photo's crop just leaves that photo out.
+        if (context.Cropping)
+        {
+            var result = await _cropDialog.CropAsync(
+                ProxyImageUrl(asset), context.CropAspect, allowSkip: true, remainingCount: context.Remaining);
+
+            if (result.Outcome == CropDialog.CropOutcome.Canceled)
+            {
+                _log.Append($"Skipped \"{entry.SourceName}\".");
+                return null;
+            }
+
+            if (result.Outcome == CropDialog.CropOutcome.SkippedAll)
+                context.Cropping = false;
+
+            if (result.Outcome == CropDialog.CropOutcome.Applied && result.CroppedPath is string croppedPath)
+            {
+                var assetDir = Path.Combine(context.TempDir, asset.Id);
+                Directory.CreateDirectory(assetDir);
+                // The crop dialog always exports JPEG.
+                var uploadPath = Path.Combine(assetDir, $"{baseName}.jpg");
+                File.Move(croppedPath, uploadPath, overwrite: true);
+
+                string? originalPath = null;
+                try
+                {
+                    var original = await _immich!.DownloadForUploadAsync(asset, Path.Combine(context.TempDir, "originals"), ct);
+                    originalPath = original.FilePath;
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // The crop itself is fine - just no "Revert to original" for this one.
+                    _log.Append($"Couldn't keep the original of \"{entry.SourceName}\" for Revert: {ex.Message}");
+                }
+
+                return new PreparedUpload(uploadPath, originalPath);
+            }
+        }
+
+        var download = await _immich!.DownloadForUploadAsync(asset, context.TempDir, ct);
+        return new PreparedUpload(RenameForUpload(download.FilePath, baseName));
+    }
+
+    // Photos that made it: badge them and remember them, so a later upload can warn about a repeat.
+    private async Task OnUploadedAsync(IReadOnlyList<BasketEntry> uploaded)
+    {
+        var ids = uploaded.Select(e => e.Id).ToList();
+        _uploadedIds.UnionWith(ids);
+        await Session.AddUploadedAssetIdsAsync(Source, ids);
+    }
+
+    // Gives a downloaded photo the file name the basket chose - each asset has its own subfolder
+    // (see ImmichApiClient.DownloadForUploadAsync), so this can't collide with another photo.
+    private static string RenameForUpload(string path, string baseName)
+    {
+        var target = Path.Combine(Path.GetDirectoryName(path)!, baseName + Path.GetExtension(path));
+        if (string.Equals(target, path, StringComparison.Ordinal))
+            return path;
+
+        File.Move(path, target, overwrite: true);
+        return target;
+    }
+
+    private void HandleStateChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        _log.Changed -= HandleStateChanged;
+        _basket.Changed -= HandleStateChanged;
+        _basket.Dispose();
+        _restore.Changed -= HandleStateChanged;
+        _restore.Dispose();
+        _splitterRef?.Dispose();
+        _loadCts?.Cancel();
+        _loadCts?.Dispose();
+    }
+}

@@ -35,8 +35,13 @@ public sealed class ImmichApiClient : IDisposable
 
     private readonly HttpClient _http;
 
-    public ImmichApiClient(string serverUrl, string apiKey)
+    // What error messages call the server: "Immich", or "Image Backup" for MeuralImageBackup,
+    // which answers the same API.
+    private readonly string _serverName;
+
+    public ImmichApiClient(string serverUrl, string apiKey, string serverName = "Immich")
     {
+        _serverName = serverName;
         _http = new HttpClient
         {
             BaseAddress = new Uri(NormalizeServerUrl(serverUrl) + "/api/"),
@@ -197,7 +202,7 @@ public sealed class ImmichApiClient : IDisposable
         }
         catch (HttpRequestException ex)
         {
-            throw new ImmichApiException($"Couldn't reach the Immich server: {ex.Message}");
+            throw new ImmichApiException($"Couldn't reach the {_serverName} server: {ex.Message}");
         }
 
         if (response.IsSuccessStatusCode)
@@ -207,10 +212,10 @@ public sealed class ImmichApiClient : IDisposable
         response.Dispose();
         throw new ImmichApiException(status switch
         {
-            HttpStatusCode.Unauthorized => "Immich rejected the API key.",
+            HttpStatusCode.Unauthorized => $"{_serverName} rejected the key.",
             HttpStatusCode.Forbidden => "The API key is missing a permission - it needs asset.read, asset.view, asset.download, album.read, person.read and user.read.",
-            HttpStatusCode.NotFound => "Immich answered 404 - check the server URL, and that the server is a recent version.",
-            _ => $"Immich answered {(int)status} {status}.",
+            HttpStatusCode.NotFound => $"{_serverName} answered 404 - check the server URL, and that the server is a recent version.",
+            _ => $"{_serverName} answered {(int)status} {status}.",
         }, status);
     }
 

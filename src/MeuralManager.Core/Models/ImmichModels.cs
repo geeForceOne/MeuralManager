@@ -53,6 +53,10 @@ public record ImmichAlbum
 
     [JsonPropertyName("albumThumbnailAssetId")]
     public string? AlbumThumbnailAssetId { get; init; }
+
+    // Immich's album description; MeuralImageBackup puts the gallery's frame name here.
+    [JsonPropertyName("description")]
+    public string? Description { get; init; }
 }
 
 public record ImmichPerson

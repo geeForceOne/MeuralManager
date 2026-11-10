@@ -136,10 +136,6 @@ public static class PlaylistService
         // re-runs the upload for exactly the files that failed - e.g. a Meural timeout on one
         // file out of a larger batch shouldn't force re-picking and re-cropping everything.
         var failures = new List<UploadFailure>();
-        // Fetched at most once per batch, and only if a timeout actually needs cross-checking -
-        // paying for a full account listing on every upload just to cover the rare timeout case
-        // isn't worth it, but re-fetching it per failed file would be needlessly slow too.
-        List<MeuralItem>? accountItemsForRecovery = null;
         foreach (var filePath in filePaths)
         {
             ct.ThrowIfCancellationRequested();
@@ -175,20 +171,32 @@ public static class PlaylistService
                 // received and processed the file, but our HttpClient gave up waiting for the
                 // reply before it arrived. Reporting that as a plain failure would be wrong (the
                 // image is fine) and would leave a real upload sitting outside every playlist as
-                // an invisible "orphan". So on a timeout, re-check the account for a
-                // just-created item with this exact file's name that wasn't there when the
-                // caller started (knownItemIds) before giving up on it.
+                // an invisible "orphan". So when the outcome is unknown, re-check the account for
+                // the image before giving up on it (see FindTimedOutUpload).
                 MeuralItem? recovered = null;
-                if (ex is OperationCanceledException && knownItemIds is not null)
+                if (TimeoutGuard.IsUncertain(ex) && knownItemIds is not null)
                 {
                     try
                     {
-                        accountItemsForRecovery ??= await client.GetAllItemsAsync(ct: ct);
-                        recovered = accountItemsForRecovery.FirstOrDefault(i =>
-                            i.Id is long id && !knownItemIds.Contains(id) && !uploaded.Exists(u => u.Item.Id == id)
-                            && string.Equals(i.Name, name, StringComparison.Ordinal));
+                        // Fresh for every timeout: a listing kept from an earlier one can't
+                        // contain an image uploaded after it.
+                        var accountItems = await client.GetAllItemsAsync(ct: ct);
+                        recovered = FindTimedOutUpload(accountItems, knownItemIds, uploaded.Select(u => u.Item.Id ?? 0).ToHashSet(), name);
+                        // Found by being the one new image, not by its name: the rename after the
+                        // upload never happened, so it still has Meural's random name.
+                        if (recovered is { Id: long renameId } && !string.Equals(recovered.Name, name, StringComparison.Ordinal))
+                        {
+                            try
+                            {
+                                recovered = await client.RenameItemAsync(renameId, name, ct);
+                            }
+                            catch (Exception renameEx) when (renameEx is not OperationCanceledException || !ct.IsCancellationRequested)
+                            {
+                                progress?.Report($"Couldn't rename the recovered \"{fileName}\": {renameEx.Message}");
+                            }
+                        }
                     }
-                    catch
+                    catch (Exception checkEx) when (checkEx is not OperationCanceledException || !ct.IsCancellationRequested)
                     {
                         // Best-effort - if the cross-check itself fails, fall through and report
                         // the original timeout as a failure like normal.
@@ -223,5 +231,20 @@ public static class PlaylistService
         }
 
         return new UploadSummary(done, failed, uploaded, failures);
+    }
+
+    // The image a timed-out upload created, from a fresh listing of the account: one with the
+    // intended name that wasn't there before (the upload and its rename both went through), or
+    // else the only image that's new since the caller's snapshot and not one of this batch's (the
+    // rename never happened, so Meural's random name is still on it). Null when it's not there or
+    // it's ambiguous - several unexplained new images mean something else uploaded meanwhile.
+    public static MeuralItem? FindTimedOutUpload(
+        IEnumerable<MeuralItem> accountItems, IReadOnlySet<long> knownItemIds, IReadOnlySet<long> uploadedThisBatch, string name)
+    {
+        var fresh = accountItems
+            .Where(i => i.Id is long id && !knownItemIds.Contains(id) && !uploadedThisBatch.Contains(id))
+            .ToList();
+        return fresh.FirstOrDefault(i => string.Equals(i.Name, name, StringComparison.Ordinal))
+            ?? (fresh.Count == 1 ? fresh[0] : null);
     }
 }

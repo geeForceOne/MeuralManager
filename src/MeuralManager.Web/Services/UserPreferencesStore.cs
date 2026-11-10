@@ -3,7 +3,8 @@ using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage;
 namespace MeuralManager.Web.Services;
 
 // UI preferences, split by what they're about:
-//  - The feature toggles (Picture of the Moment, crop, remote control, Immich) live per-account in
+//  - The feature toggles (Picture of the Moment, crop, remote control, Immich, Image Backup,
+//    smarter timeouts) live per-account in
 //    the SQLite settings table via MeuralSessionState, so they follow the account across browsers
 //    and survive clearing site data - the same place the Immich URL/key and the remote toolbar's
 //    device list already are.
@@ -28,7 +29,12 @@ public sealed class UserPreferencesStore(ProtectedLocalStorage storage, MeuralSe
         bool ImmichEnabled = false,
         // The Immich page's basket and preview panes, same idea as the Playlists widths above.
         double? ImmichBasketPaneWidth = null,
-        double? ImmichPreviewPaneWidth = null);
+        double? ImmichPreviewPaneWidth = null,
+        // Off by default, like Immich: only for people running MeuralImageBackup.
+        bool ImageBackupEnabled = false,
+        // Experimental, off by default: check whether Meural already made a change when its reply
+        // is slow or missing, instead of reporting a failure (see TimeoutGuard).
+        bool SmartTimeouts = false);
 
     // What's in the browser's localStorage. Only the widths are written now; the toggle fields are
     // legacy - they used to live here before moving to the account DB - and are only read, as a
@@ -68,7 +74,10 @@ public sealed class UserPreferencesStore(ProtectedLocalStorage storage, MeuralSe
                 saved.ShowPictureOfTheMoment ?? toggles.ShowPictureOfTheMoment,
                 saved.CropFeatureEnabled ?? toggles.CropFeatureEnabled,
                 saved.RemoteControlEnabled ?? toggles.RemoteControlEnabled,
-                saved.ImmichEnabled ?? toggles.ImmichEnabled);
+                saved.ImmichEnabled ?? toggles.ImmichEnabled,
+                // Newer than the browser-stored toggles, so only ever in the account's DB.
+                saved.ImageBackupEnabled,
+                saved.SmartTimeouts);
             if (merged != saved)
                 await session.SaveFeatureTogglesAsync(merged);
 
@@ -84,7 +93,9 @@ public sealed class UserPreferencesStore(ProtectedLocalStorage storage, MeuralSe
             RemoteControlEnabled: toggles.RemoteControlEnabled ?? defaults.RemoteControlEnabled,
             ImmichEnabled: toggles.ImmichEnabled ?? defaults.ImmichEnabled,
             ImmichBasketPaneWidth: browser.ImmichBasketPaneWidth,
-            ImmichPreviewPaneWidth: browser.ImmichPreviewPaneWidth);
+            ImmichPreviewPaneWidth: browser.ImmichPreviewPaneWidth,
+            ImageBackupEnabled: toggles.ImageBackupEnabled ?? defaults.ImageBackupEnabled,
+            SmartTimeouts: toggles.SmartTimeouts ?? defaults.SmartTimeouts);
     }
 
     public async Task SaveAsync(StoredPreferences preferences)
@@ -95,7 +106,9 @@ public sealed class UserPreferencesStore(ProtectedLocalStorage storage, MeuralSe
                 preferences.ShowPictureOfTheMoment,
                 preferences.CropFeatureEnabled,
                 preferences.RemoteControlEnabled,
-                preferences.ImmichEnabled));
+                preferences.ImmichEnabled,
+                preferences.ImageBackupEnabled,
+                preferences.SmartTimeouts));
         }
 
         try

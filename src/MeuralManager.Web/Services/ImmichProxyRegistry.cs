@@ -12,21 +12,21 @@ namespace MeuralManager.Web.Services;
 // loads; it's a capability URL, the same trust model the image-cache endpoint already uses.
 public sealed class ImmichProxyRegistry : IDisposable
 {
-    private sealed record Entry(ImmichSettings Settings, ImmichApiClient Client);
+    private sealed record Entry(ImmichSettings Settings, string ServerName, ImmichApiClient Client);
 
     private readonly ConcurrentDictionary<string, Entry> _entries = new();
 
     // Returns the client for token, reusing the existing one when the settings haven't changed
     // (so tabs of the same account share one HttpClient) and swapping it out when they have.
-    public ImmichApiClient Register(string token, ImmichSettings settings)
+    public ImmichApiClient Register(string token, ImmichSettings settings, string serverName = "Immich")
     {
         lock (_entries)
         {
-            if (_entries.TryGetValue(token, out var existing) && existing.Settings == settings)
+            if (_entries.TryGetValue(token, out var existing) && existing.Settings == settings && existing.ServerName == serverName)
                 return existing.Client;
 
-            var client = new ImmichApiClient(settings.ServerUrl!, settings.ApiKey!);
-            _entries[token] = new Entry(settings, client);
+            var client = new ImmichApiClient(settings.ServerUrl!, settings.ApiKey!, serverName);
+            _entries[token] = new Entry(settings, serverName, client);
             existing?.Client.Dispose();
             return client;
         }

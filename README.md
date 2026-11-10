@@ -71,6 +71,22 @@ included), see what's already in the target playlist, and crop on upload.
 Can't decide between two similar shots? "Compare" pins one photo and shows every photo you click
 next beside it (or in the same spot, to flip back and forth), then keeps the one you pick.
 
+## Image Backup (optional)
+
+If you run [MeuralImageBackup](https://github.com/geeForceOne/MeuralImageBackup), which keeps a
+copy of every image your frames show, this app can browse that backup (by date or gallery) and
+send images back to Meural, with the same basket, preview and upload as Immich. An open gallery
+also has **Restore as playlist**, which recreates the whole gallery as a Meural playlist in one
+click. It's off by default — turn it on in Settings, then enter the backup's URL and the token
+from its Settings page.
+
+## Smarter timeout handling (experimental)
+
+Meural often makes a change but answers slowly, so the app can report a failure for something
+that actually worked. Turn on "Smarter timeout handling" in Settings to have the app check on
+Meural while it waits, and only report a failure once Meural confirms the change didn't happen.
+Uploads also get two minutes instead of 30 seconds. It's off by default.
+
 ## Stats API
 
 A small API that returns your playlist count, image count and last scan time, for dashboards like
@@ -91,8 +107,8 @@ that shares one server. It is not built to be offered as a public service.
 - **Not everything is encrypted at rest.** In the `/data/cache` volume, each signed-in account
   has a folder (named after its email) with a SQLite database, an image cache and the originals
   kept for "Revert to original". The database holds playlist and image names, your settings and
-  the list of Immich photos you uploaded. All of it is stored in readable form, so anyone with access to the server or the volume can read them. Only the
-  Claude, OpenAI and Immich API keys are encrypted, with the keys in `/data/keys`. The Homepage
+  the lists of Immich and Image Backup photos you uploaded. All of it is stored in readable form, so anyone with access to the server or the volume can read them. Only the
+  Claude, OpenAI, Immich and Image Backup keys are encrypted, with the keys in `/data/keys`. The Homepage
   widget token is stored only as a hash.
 - **Protect the host.** Run it on a machine you control. Keep it on your home network, or put it
   behind HTTPS and your own authentication if it's reachable from the internet. Anyone who can
