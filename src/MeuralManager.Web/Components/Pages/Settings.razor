@@ -138,55 +138,75 @@
 
     @if (_immichEnabled)
     {
-        <label class="field">
-            <span>Server URL</span>
-            <input class="text-input" autocomplete="off" @bind="_immichUrl" @bind:event="oninput" placeholder="http://192.168.1.10:2283" />
-        </label>
-
-        <label class="field">
-            <span>API key</span>
-            <input class="text-input" type="password" autocomplete="off" @bind="_immichKey" @bind:event="oninput" />
-        </label>
-        @if (_unreadable.Immich && string.IsNullOrEmpty(_immichKey))
-        {
-            <p class="immich-error">@UnreadableMessage("Immich")</p>
-        }
-
-        <p class="muted setting-description">
-            Create the key in Immich under <em>Account Settings → API Keys</em>, and enable these
-            permissions on it. They're all read-only - this app never changes anything in Immich:
-        </p>
-        <ul class="muted setting-description immich-permissions">
-            <li><code>asset.read</code> - browse and search your photos</li>
-            <li><code>asset.view</code> - show thumbnails and previews</li>
-            <li><code>asset.download</code> - fetch the full photo to upload it to Meural</li>
-            <li><code>album.read</code> - list your albums</li>
-            <li><code>person.read</code> - list people and their face pictures</li>
-            <li><code>user.read</code> - used by "Test connection" to confirm the key works</li>
-        </ul>
-        <p class="muted setting-description">
-            The server needs to be reachable from the machine running this app (not just from your
-            browser). The key stays on this server - your browser never sees it.
-        </p>
-
-        <div class="immich-settings-actions">
-            <button type="button" class="btn btn-primary" @onclick="SaveImmichSettingsAsync" disabled="@(_savingImmich || _testingImmich)">
-                @(_savingImmich ? "Saving…" : "Save")
-            </button>
-            <button type="button" class="btn btn-secondary" @onclick="TestImmichConnectionAsync"
-                    disabled="@(_savingImmich || _testingImmich || string.IsNullOrWhiteSpace(_immichUrl) || string.IsNullOrWhiteSpace(_immichKey))">
-                @(_testingImmich ? "Testing…" : "Test connection")
-            </button>
-            <button type="button" class="btn btn-ghost" @onclick="ClearImmichSettingsAsync" disabled="@(_savingImmich || _testingImmich)">
-                Clear saved settings
-            </button>
-        </div>
-
-        @if (_immichStatus is not null)
-        {
-            <p class="@(_immichStatusIsError ? "immich-error" : "muted")">@_immichStatus</p>
-        }
+        <PhotoSourceSettingsForm Source="PhotoSource.Immich" UrlPlaceholder="http://192.168.1.10:2283">
+            <p class="muted setting-description">
+                Create the key in Immich under <em>Account Settings → API Keys</em>, and enable these
+                permissions on it. They're all read-only - this app never changes anything in Immich:
+            </p>
+            <ul class="muted setting-description immich-permissions">
+                <li><code>asset.read</code> - browse and search your photos</li>
+                <li><code>asset.view</code> - show thumbnails and previews</li>
+                <li><code>asset.download</code> - fetch the full photo to upload it to Meural</li>
+                <li><code>album.read</code> - list your albums</li>
+                <li><code>person.read</code> - list people and their face pictures</li>
+                <li><code>user.read</code> - used by "Test connection" to confirm the key works</li>
+            </ul>
+            <p class="muted setting-description">
+                The server needs to be reachable from the machine running this app (not just from your
+                browser). The key stays on this server - your browser never sees it.
+            </p>
+        </PhotoSourceSettingsForm>
     }
+</div>
+
+<div class="settings-group">
+    <h2>Image Backup</h2>
+    <div class="setting-row">
+        <div>
+            <div class="setting-label">MeuralImageBackup integration</div>
+            <div class="muted setting-description">
+                Browse the images <a href="https://github.com/geeForceOne/MeuralImageBackup" target="_blank" rel="noopener">MeuralImageBackup</a>
+                saved from your frames (by date or gallery), upload single images into a playlist,
+                or restore a whole gallery as a playlist. Leave this off if you don't run it - it
+                hides the Image Backup page entirely.
+            </div>
+        </div>
+        <label class="switch">
+            <input type="checkbox" checked="@_imageBackupEnabled" @onchange="OnImageBackupToggleChanged" />
+            <span class="switch-slider"></span>
+        </label>
+    </div>
+
+    @if (_imageBackupEnabled)
+    {
+        <PhotoSourceSettingsForm Source="PhotoSource.ImageBackup" UrlPlaceholder="http://192.168.1.10:8090">
+            <p class="muted setting-description">
+                Create the token in MeuralImageBackup on its <em>Settings</em> page. It only lets this
+                app read the backup - nothing there is ever changed. The backup needs to be reachable
+                from the machine running this app, and the token stays on this server.
+            </p>
+        </PhotoSourceSettingsForm>
+    }
+</div>
+
+<div class="settings-group">
+    <h2>Experimental</h2>
+    <div class="setting-row">
+        <div>
+            <div class="setting-label">Smarter timeout handling</div>
+            <div class="muted setting-description">
+                Meural often makes a change but answers slowly, so the app can report a failure for
+                something that worked. With this on, a slow change is checked on Meural while the app
+                waits, and a timeout only counts as failed once Meural confirms it didn't happen.
+                Uploads also get two minutes instead of 30 seconds. It costs a few extra requests to
+                Meural when a change is slow.
+            </div>
+        </div>
+        <label class="switch">
+            <input type="checkbox" checked="@_smartTimeouts" @onchange="OnSmartTimeoutsToggleChanged" />
+            <span class="switch-slider"></span>
+        </label>
+    </div>
 </div>
 
 <div class="settings-group">
@@ -322,12 +342,8 @@
     private bool _remoteControlEnabled = true;
 
     private bool _immichEnabled;
-    private string _immichUrl = "";
-    private string _immichKey = "";
-    private bool _savingImmich;
-    private bool _testingImmich;
-    private string? _immichStatus;
-    private bool _immichStatusIsError;
+    private bool _imageBackupEnabled;
+    private bool _smartTimeouts;
 
     private AiProvider _provider = AiProvider.Claude;
     private RenameStyle _renameStyle = RenameStyle.Professional;
@@ -405,7 +421,7 @@
 
     // Saved keys that are still in the DB but can't be decrypted any more - their fields load empty,
     // so without this they'd just look like they'd vanished.
-    private MeuralSessionState.UnreadableSecrets _unreadable = new(false, false, false);
+    private MeuralSessionState.UnreadableSecrets _unreadable = new(false, false, false, false);
 
     private static string UnreadableMessage(string what) =>
         $"A saved {what} API key exists but can't be read - the encryption key it was saved with is no longer available. Enter it again and save to replace it.";
@@ -422,14 +438,12 @@
         _cropFeatureEnabled = prefs.CropFeatureEnabled;
         _remoteControlEnabled = prefs.RemoteControlEnabled;
         _immichEnabled = prefs.ImmichEnabled;
+        _imageBackupEnabled = prefs.ImageBackupEnabled;
+        _smartTimeouts = prefs.SmartTimeouts;
         _theme = await Session.LoadThemeAsync();
 
         await RefreshUnreadableAsync();
         _hasHomepageToken = await Session.HasHomepageTokenAsync();
-
-        var immichSettings = await Session.LoadImmichSettingsAsync();
-        _immichUrl = immichSettings.ServerUrl ?? "";
-        _immichKey = immichSettings.ApiKey ?? "";
 
         var aiSettings = await Session.LoadAiSettingsAsync();
         _provider = aiSettings.Provider;
@@ -495,7 +509,6 @@
     private async Task OnImmichToggleChanged(ChangeEventArgs e)
     {
         _immichEnabled = (bool)e.Value!;
-        _immichStatus = null;
         // Loads-then-patches so this doesn't clobber other preferences saved elsewhere - see
         // OnToggleChanged above.
         var prefs = await Preferences.LoadAsync();
@@ -504,58 +517,28 @@
         // Switching it off stops the thumbnail proxy serving this account's Immich right away;
         // the saved URL and key are kept so switching it back on doesn't mean re-entering them.
         if (!_immichEnabled)
-            Session.ReleaseImmichClient();
+            Session.ReleasePhotoSourceClient(PhotoSource.Immich);
     }
 
-    private async Task SaveImmichSettingsAsync()
+    private async Task OnImageBackupToggleChanged(ChangeEventArgs e)
     {
-        _savingImmich = true;
-        _immichStatus = null;
-        try
-        {
-            await Session.SaveImmichSettingsAsync(new ImmichSettings { ServerUrl = _immichUrl, ApiKey = _immichKey });
-            await RefreshUnreadableAsync();
-            _immichStatus = "Saved.";
-            _immichStatusIsError = false;
-        }
-        finally
-        {
-            _savingImmich = false;
-        }
+        _imageBackupEnabled = (bool)e.Value!;
+        // Loads-then-patches so this doesn't clobber other preferences saved elsewhere - see
+        // OnToggleChanged above.
+        var prefs = await Preferences.LoadAsync();
+        await Preferences.SaveAsync(prefs with { ImageBackupEnabled = _imageBackupEnabled });
+
+        // Same as Immich: off stops the proxy right away, the URL and token are kept.
+        if (!_imageBackupEnabled)
+            Session.ReleasePhotoSourceClient(PhotoSource.ImageBackup);
     }
 
-    // Tests what's currently typed in the form, saved or not, so a bad URL or key can be fixed
-    // before it's persisted.
-    private async Task TestImmichConnectionAsync()
+    // MainLayout passes the new value to the Meural client when the preferences change.
+    private async Task OnSmartTimeoutsToggleChanged(ChangeEventArgs e)
     {
-        _testingImmich = true;
-        _immichStatus = null;
-        try
-        {
-            using var client = new ImmichApiClient(_immichUrl, _immichKey);
-            var who = await client.TestConnectionAsync();
-            _immichStatus = $"Connected to Immich as {who}.";
-            _immichStatusIsError = false;
-        }
-        catch (Exception ex)
-        {
-            _immichStatus = ex is UriFormatException ? "That doesn't look like a valid server URL." : ex.Message;
-            _immichStatusIsError = true;
-        }
-        finally
-        {
-            _testingImmich = false;
-        }
-    }
-
-    private async Task ClearImmichSettingsAsync()
-    {
-        await Session.SaveImmichSettingsAsync(new ImmichSettings());
-        await RefreshUnreadableAsync();
-        _immichUrl = "";
-        _immichKey = "";
-        _immichStatus = "Cleared.";
-        _immichStatusIsError = false;
+        _smartTimeouts = (bool)e.Value!;
+        var prefs = await Preferences.LoadAsync();
+        await Preferences.SaveAsync(prefs with { SmartTimeouts = _smartTimeouts });
     }
 
     private async Task SaveAiSettingsAsync()

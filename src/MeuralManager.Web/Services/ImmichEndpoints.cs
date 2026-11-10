@@ -7,15 +7,15 @@ public static class ImmichEndpoints
 {
     public static void MapImmichEndpoints(this WebApplication app)
     {
-        // A photo's thumbnail/preview/fullsize rendition, fetched from Immich with the API key
-        // added server-side. Immich's own ids are GUIDs, so anything else is rejected outright
-        // rather than being forwarded into a request path.
+        // A photo's thumbnail/preview/fullsize rendition, fetched from the source with the API key
+        // added server-side. Only ids shaped like the sources' own (see IsAssetId) are forwarded
+        // into a request path; anything else is rejected outright.
         app.MapGet("/immich-proxy/{token}/asset/{assetId}/{size}", async (
             string token, string assetId, string size, ImmichProxyRegistry registry, HttpContext http, CancellationToken ct) =>
         {
             if (registry.Get(token) is not { } client)
                 return Results.NotFound();
-            if (!Guid.TryParse(assetId, out _) || size is not ("thumbnail" or "preview" or "fullsize"))
+            if (!IsAssetId(assetId) || size is not ("thumbnail" or "preview" or "fullsize"))
                 return Results.BadRequest();
 
             return await StreamAsync(http, () => client.GetAssetThumbnailAsync(assetId, size, ct));
@@ -31,7 +31,7 @@ public static class ImmichEndpoints
         {
             if (registry.Get(token) is not { } client)
                 return Results.NotFound();
-            if (!Guid.TryParse(assetId, out _))
+            if (!IsAssetId(assetId))
                 return Results.BadRequest();
 
             var asset = new ImmichAsset { Id = assetId, OriginalMimeType = mime };
@@ -49,6 +49,10 @@ public static class ImmichEndpoints
             return await StreamAsync(http, () => client.GetPersonThumbnailAsync(personId, ct));
         }).WithMetadata(new SkipStatusCodePages());
     }
+
+    // Immich's asset ids are GUIDs; MeuralImageBackup's are its image row ids, plain numbers.
+    public static bool IsAssetId(string id) =>
+        Guid.TryParse(id, out _) || (id.Length is > 0 and <= 18 && id.All(char.IsAsciiDigit));
 
     private static async Task<IResult> StreamAsync(HttpContext http, Func<Task<HttpResponseMessage>> fetch)
     {

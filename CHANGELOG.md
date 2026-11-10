@@ -1,5 +1,16 @@
 # Release notes
 
+## 1.15.0 - 2026-11-10
+
+### New
+
+- Image Backup: browse what MeuralImageBackup saved from your frames, by date or gallery, and send images back to a Meural playlist. Turn it on in Settings.
+- Experimental: smarter timeout handling. When Meural is slow to answer, the app checks whether the change went through instead of reporting a failure. Turn it on in Settings.
+
+### Fixed
+
+- Minor fixes and updates.
+
 ## 1.14.0 - 2026-10-26
 
 ### New

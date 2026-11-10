@@ -105,8 +105,9 @@ public sealed class MeuralSessionState(
         if (Email is not null)
             imageCache.UnregisterAndDispose(Email);
 
-        ReleaseImmichClient();
-        ImmichProxyToken = null;
+        foreach (var source in PhotoSource.All)
+            ReleasePhotoSourceClient(source);
+        _proxyTokens.Clear();
 
         Client?.Dispose();
         Client = null;
@@ -504,33 +505,33 @@ public sealed class MeuralSessionState(
         await _cacheStore.SetSettingAsync("AiOpenAiModel", settings.OpenAiModel, CancellationToken.None);
     }
 
-    // Immich connection (server URL + API key) - per-account like AiSettings above, with the key
-    // Data-Protection-encrypted before it reaches the DB. Whether the integration is switched on
-    // at all is a separate toggle (UserPreferencesStore.ImmichEnabled, see FeatureToggles below),
-    // so turning it off doesn't throw these away.
-    public async Task<ImmichSettings> LoadImmichSettingsAsync()
+    // A photo source's connection (server URL + API key) - per-account like AiSettings above, with
+    // the key Data-Protection-encrypted before it reaches the DB. Whether the source is switched on
+    // at all is a separate toggle (see FeatureToggles below), so turning it off doesn't throw these
+    // away. Immich and Image Backup each have their own rows (PhotoSource.Key).
+    public async Task<ImmichSettings> LoadPhotoSourceSettingsAsync(PhotoSource source)
     {
         if (_cacheStore is null)
             return new ImmichSettings();
 
         return new ImmichSettings
         {
-            ServerUrl = await _cacheStore.GetSettingAsync("ImmichServerUrl", CancellationToken.None),
-            ApiKey = TryUnprotect(await _cacheStore.GetSettingAsync("ImmichApiKey", CancellationToken.None)),
+            ServerUrl = await _cacheStore.GetSettingAsync($"{source.Key}ServerUrl", CancellationToken.None),
+            ApiKey = TryUnprotect(await _cacheStore.GetSettingAsync($"{source.Key}ApiKey", CancellationToken.None)),
         };
     }
 
-    public async Task SaveImmichSettingsAsync(ImmichSettings settings)
+    public async Task SavePhotoSourceSettingsAsync(PhotoSource source, ImmichSettings settings)
     {
         if (_cacheStore is null)
             return;
 
-        await _cacheStore.SetSettingAsync("ImmichServerUrl", string.IsNullOrWhiteSpace(settings.ServerUrl) ? null : settings.ServerUrl.Trim(), CancellationToken.None);
-        await _cacheStore.SetSettingAsync("ImmichApiKey", Protect(settings.ApiKey?.Trim()), CancellationToken.None);
+        await _cacheStore.SetSettingAsync($"{source.Key}ServerUrl", string.IsNullOrWhiteSpace(settings.ServerUrl) ? null : settings.ServerUrl.Trim(), CancellationToken.None);
+        await _cacheStore.SetSettingAsync($"{source.Key}ApiKey", Protect(settings.ApiKey?.Trim()), CancellationToken.None);
 
         // Whatever the thumbnail proxy was holding is now stale (or, if the settings were just
         // cleared, shouldn't be holding a key at all) - it's re-registered on next use.
-        ReleaseImmichClient();
+        ReleasePhotoSourceClient(source);
     }
 
     // Token for the Homepage dashboard widget (see HomepageEndpoints). Only its hash is kept, so
@@ -555,62 +556,67 @@ public sealed class MeuralSessionState(
             await _cacheStore.SetSettingAsync(HomepageEndpoints.TokenHashSettingKey, null, CancellationToken.None);
     }
 
-    // Path segment for this account's /immich-proxy/... URLs - see ImmichProxyRegistry. Random,
-    // generated once and then kept so thumbnail URLs stay the same across visits and the
-    // browser's cache keeps working.
-    public string? ImmichProxyToken { get; private set; }
+    // Path segment for this account's /immich-proxy/... URLs, one per source - see
+    // ImmichProxyRegistry. Random, generated once and then kept so thumbnail URLs stay the same
+    // across visits and the browser's cache keeps working.
+    private readonly Dictionary<string, string> _proxyTokens = [];
 
-    // The shared client for this account's Immich server, registered with the thumbnail proxy so
-    // <img> tags can be served through it. Null if Immich isn't configured yet.
-    public async Task<ImmichApiClient?> GetImmichClientAsync()
+    public string? GetProxyToken(PhotoSource source) => _proxyTokens.GetValueOrDefault(source.Key);
+
+    // The shared client for this account's server of that source, registered with the thumbnail
+    // proxy so <img> tags can be served through it. Null if it isn't configured yet.
+    public async Task<ImmichApiClient?> GetPhotoSourceClientAsync(PhotoSource source)
     {
-        var settings = await LoadImmichSettingsAsync();
+        var settings = await LoadPhotoSourceSettingsAsync(source);
         if (!settings.IsConfigured || _cacheStore is null)
             return null;
 
-        if (ImmichProxyToken is null)
+        if (!_proxyTokens.TryGetValue(source.Key, out var token))
         {
-            ImmichProxyToken = await _cacheStore.GetSettingAsync("ImmichProxyToken", CancellationToken.None);
-            if (ImmichProxyToken is null)
+            var settingKey = $"{source.Key}ProxyToken";
+            token = await _cacheStore.GetSettingAsync(settingKey, CancellationToken.None);
+            if (token is null)
             {
-                ImmichProxyToken = Guid.NewGuid().ToString("N");
-                await _cacheStore.SetSettingAsync("ImmichProxyToken", ImmichProxyToken, CancellationToken.None);
+                token = Guid.NewGuid().ToString("N");
+                await _cacheStore.SetSettingAsync(settingKey, token, CancellationToken.None);
             }
+            _proxyTokens[source.Key] = token;
         }
 
-        return immichProxy.Register(ImmichProxyToken, settings);
+        return immichProxy.Register(token, settings, source.Name);
     }
 
-    // Stops the thumbnail proxy serving this account's Immich - called when the integration is
-    // switched off or its settings change, and on sign-out.
-    public void ReleaseImmichClient()
+    // Stops the thumbnail proxy serving this account's server of that source - called when the
+    // source is switched off or its settings change, and on sign-out.
+    public void ReleasePhotoSourceClient(PhotoSource source)
     {
-        if (ImmichProxyToken is not null)
-            immichProxy.Unregister(ImmichProxyToken);
+        if (_proxyTokens.TryGetValue(source.Key, out var token))
+            immichProxy.Unregister(token);
     }
 
-    // Immich photos already sent to Meural through this app, so the grid can flag them and a
-    // photo doesn't get uploaded twice by accident. Newline-separated in one settings row - Immich
-    // ids are GUIDs, so there's no escaping to worry about, and even tens of thousands is ~1 MB.
-    public async Task<HashSet<string>> LoadImmichUploadedAssetIdsAsync()
+    // Photos already sent to Meural from that source through this app, so the grid can flag them
+    // and a photo doesn't get uploaded twice by accident. Newline-separated in one settings row -
+    // the ids are GUIDs (Immich) or numbers (Image Backup), so there's no escaping to worry about,
+    // and even tens of thousands is ~1 MB.
+    public async Task<HashSet<string>> LoadUploadedAssetIdsAsync(PhotoSource source)
     {
         if (_cacheStore is null)
             return [];
 
-        var raw = await _cacheStore.GetSettingAsync("ImmichUploadedAssetIds", CancellationToken.None);
+        var raw = await _cacheStore.GetSettingAsync($"{source.Key}UploadedAssetIds", CancellationToken.None);
         return string.IsNullOrEmpty(raw)
             ? []
             : raw.Split('\n', StringSplitOptions.RemoveEmptyEntries).ToHashSet();
     }
 
-    public async Task AddImmichUploadedAssetIdsAsync(IEnumerable<string> assetIds)
+    public async Task AddUploadedAssetIdsAsync(PhotoSource source, IEnumerable<string> assetIds)
     {
         if (_cacheStore is null)
             return;
 
-        var all = await LoadImmichUploadedAssetIdsAsync();
+        var all = await LoadUploadedAssetIdsAsync(source);
         all.UnionWith(assetIds);
-        await _cacheStore.SetSettingAsync("ImmichUploadedAssetIds", string.Join('\n', all), CancellationToken.None);
+        await _cacheStore.SetSettingAsync($"{source.Key}UploadedAssetIds", string.Join('\n', all), CancellationToken.None);
     }
 
     // The frame remote control toolbar's instances (one device id per toolbar, in order - the
@@ -678,7 +684,9 @@ public sealed class MeuralSessionState(
         bool? ShowPictureOfTheMoment = null,
         bool? CropFeatureEnabled = null,
         bool? RemoteControlEnabled = null,
-        bool? ImmichEnabled = null);
+        bool? ImmichEnabled = null,
+        bool? ImageBackupEnabled = null,
+        bool? SmartTimeouts = null);
 
     public async Task<FeatureToggles> LoadFeatureTogglesAsync()
     {
@@ -692,7 +700,9 @@ public sealed class MeuralSessionState(
             await ReadAsync("FeatureShowPictureOfTheMoment"),
             await ReadAsync("FeatureCrop"),
             await ReadAsync("FeatureRemoteControl"),
-            await ReadAsync("FeatureImmich"));
+            await ReadAsync("FeatureImmich"),
+            await ReadAsync("FeatureImageBackup"),
+            await ReadAsync("FeatureSmartTimeouts"));
     }
 
     public async Task SaveFeatureTogglesAsync(FeatureToggles toggles)
@@ -707,6 +717,8 @@ public sealed class MeuralSessionState(
         await WriteAsync("FeatureCrop", toggles.CropFeatureEnabled);
         await WriteAsync("FeatureRemoteControl", toggles.RemoteControlEnabled);
         await WriteAsync("FeatureImmich", toggles.ImmichEnabled);
+        await WriteAsync("FeatureImageBackup", toggles.ImageBackupEnabled);
+        await WriteAsync("FeatureSmartTimeouts", toggles.SmartTimeouts);
     }
 
     // The color theme the account picked in Settings - per-account like the toggles above. A browser
@@ -738,15 +750,17 @@ public sealed class MeuralSessionState(
     // keys they were encrypted with are gone, or were configured differently at the time). The
     // Load*Settings methods above quietly turn those into "not set" - correct for the code using
     // them, but it makes a key look lost - so Settings uses this to say what actually happened.
-    public sealed record UnreadableSecrets(bool Claude, bool OpenAi, bool Immich)
+    public sealed record UnreadableSecrets(bool Claude, bool OpenAi, bool Immich, bool ImageBackup)
     {
-        public bool Any => Claude || OpenAi || Immich;
+        public bool Any => Claude || OpenAi || Immich || ImageBackup;
+
+        public bool For(PhotoSource source) => source == PhotoSource.ImageBackup ? ImageBackup : Immich;
     }
 
     public async Task<UnreadableSecrets> GetUnreadableSecretsAsync()
     {
         if (_cacheStore is null)
-            return new UnreadableSecrets(false, false, false);
+            return new UnreadableSecrets(false, false, false, false);
 
         async Task<bool> IsUnreadableAsync(string key)
         {
@@ -757,7 +771,8 @@ public sealed class MeuralSessionState(
         return new UnreadableSecrets(
             await IsUnreadableAsync("AiClaudeApiKey"),
             await IsUnreadableAsync("AiOpenAiApiKey"),
-            await IsUnreadableAsync("ImmichApiKey"));
+            await IsUnreadableAsync("ImmichApiKey"),
+            await IsUnreadableAsync("ImageBackupApiKey"));
     }
 
     private string? Protect(string? plainText) =>

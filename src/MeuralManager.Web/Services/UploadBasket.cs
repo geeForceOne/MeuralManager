@@ -444,7 +444,8 @@ public sealed class UploadBasket : IDisposable
         string sourceName,
         bool cropEnabled,
         PrepareUploadAsync prepare,
-        Func<IReadOnlyList<BasketEntry>, Task> onUploaded)
+        Func<IReadOnlyList<BasketEntry>, Task> onUploaded,
+        string failedHint = "they're still in the basket so you can try again")
     {
         if (Busy || entries.Count == 0)
             return;
@@ -536,7 +537,7 @@ public sealed class UploadBasket : IDisposable
             await _session.SetGalleryItemsAsync(galleryId, items);
 
             if (failed > 0)
-                _showError($"{failed} photo(s) couldn't be uploaded - they're still in the basket so you can try again.");
+                _showError($"{failed} photo(s) couldn't be uploaded - {failedHint}.");
             else
                 _showSuccess($"Uploaded {summary.Done} photo(s) to \"{playlist.Name}\".");
         }

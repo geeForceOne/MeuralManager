@@ -1,0 +1,119 @@
+@inject MeuralSessionState Session
+
+@* The connection form for one photo source (server URL + key, Save / Test / Clear), shared by the
+   Immich and Image Backup sections of Settings. ChildContent is the source's own help text. *@
+
+<label class="field">
+    <span>Server URL</span>
+    <input class="text-input" autocomplete="off" @bind="_url" @bind:event="oninput" placeholder="@UrlPlaceholder" />
+</label>
+
+<label class="field">
+    <span>@KeyLabelCapitalized</span>
+    <input class="text-input" type="password" autocomplete="off" @bind="_key" @bind:event="oninput" />
+</label>
+@if (_unreadable && string.IsNullOrEmpty(_key))
+{
+    <p class="immich-error">
+        A saved @Source.Name @Source.KeyLabel exists but can't be read - the encryption key it was saved
+        with is no longer available. Enter it again and save to replace it.
+    </p>
+}
+
+@ChildContent
+
+<div class="immich-settings-actions">
+    <button type="button" class="btn btn-primary" @onclick="SaveAsync" disabled="@(_saving || _testing)">
+        @(_saving ? "Saving…" : "Save")
+    </button>
+    <button type="button" class="btn btn-secondary" @onclick="TestAsync"
+            disabled="@(_saving || _testing || string.IsNullOrWhiteSpace(_url) || string.IsNullOrWhiteSpace(_key))">
+        @(_testing ? "Testing…" : "Test connection")
+    </button>
+    <button type="button" class="btn btn-ghost" @onclick="ClearAsync" disabled="@(_saving || _testing)">
+        Clear saved settings
+    </button>
+</div>
+
+@if (_status is not null)
+{
+    <p class="@(_statusIsError ? "immich-error" : "muted")">@_status</p>
+}
+
+@code {
+    [Parameter, EditorRequired] public PhotoSource Source { get; set; } = null!;
+    [Parameter] public string UrlPlaceholder { get; set; } = "";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private string _url = "";
+    private string _key = "";
+    private bool _saving;
+    private bool _testing;
+    private bool _unreadable;
+    private string? _status;
+    private bool _statusIsError;
+
+    private string KeyLabelCapitalized => char.ToUpperInvariant(Source.KeyLabel[0]) + Source.KeyLabel[1..];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var settings = await Session.LoadPhotoSourceSettingsAsync(Source);
+        _url = settings.ServerUrl ?? "";
+        _key = settings.ApiKey ?? "";
+        await RefreshUnreadableAsync();
+    }
+
+    private async Task RefreshUnreadableAsync() =>
+        _unreadable = (await Session.GetUnreadableSecretsAsync()).For(Source);
+
+    private async Task SaveAsync()
+    {
+        _saving = true;
+        _status = null;
+        try
+        {
+            await Session.SavePhotoSourceSettingsAsync(Source, new ImmichSettings { ServerUrl = _url, ApiKey = _key });
+            await RefreshUnreadableAsync();
+            _status = "Saved.";
+            _statusIsError = false;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    // Tests what's currently typed in the form, saved or not, so a bad URL or key can be fixed
+    // before it's persisted.
+    private async Task TestAsync()
+    {
+        _testing = true;
+        _status = null;
+        try
+        {
+            using var client = new ImmichApiClient(_url, _key, Source.Name);
+            var who = await client.TestConnectionAsync();
+            _status = $"Connected to {Source.Name} as {who}.";
+            _statusIsError = false;
+        }
+        catch (Exception ex)
+        {
+            _status = ex is UriFormatException ? "That doesn't look like a valid server URL." : ex.Message;
+            _statusIsError = true;
+        }
+        finally
+        {
+            _testing = false;
+        }
+    }
+
+    private async Task ClearAsync()
+    {
+        await Session.SavePhotoSourceSettingsAsync(Source, new ImmichSettings());
+        await RefreshUnreadableAsync();
+        _url = "";
+        _key = "";
+        _status = "Cleared.";
+        _statusIsError = false;
+    }
+}

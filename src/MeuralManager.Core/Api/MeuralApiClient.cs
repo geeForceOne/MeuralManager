@@ -12,7 +12,7 @@ namespace MeuralManager.Core.Api;
 // flow Meural's own official Home Assistant integration uses (github.com/GuySie/ha-meural). See
 // NetgearAuthenticator for the details; this class just holds the resulting session and adds
 // `Authorization: Token <token>` + the required x-meural-* headers to API requests.
-public sealed class MeuralApiClient : IDisposable
+public sealed partial class MeuralApiClient : IDisposable
 {
     private const string ApiBaseUrl = "https://api.meural.com/v1/";
 
@@ -23,6 +23,11 @@ public sealed class MeuralApiClient : IDisposable
     private static readonly TimeSpan HttpTimeout = TimeSpan.FromSeconds(30);
 
     private readonly HttpClient _http = new() { Timeout = HttpTimeout };
+
+    // Uploads only, and only with SmartTimeouts on: sending the file and Meural processing it can
+    // take well over 30 seconds, and a cut-off upload usually still lands. Same headers as _http.
+    private static readonly TimeSpan UploadHttpTimeout = TimeSpan.FromMinutes(2);
+    private readonly HttpClient _uploadHttp = new() { Timeout = UploadHttpTimeout };
     private readonly NetgearAuthenticator _authenticator;
 
     private string? _accessToken;
@@ -33,6 +38,7 @@ public sealed class MeuralApiClient : IDisposable
     public MeuralApiClient(string? trustId = null)
     {
         _http.DefaultRequestHeaders.UserAgent.ParseAdd(NetgearAuthenticator.BrowserUserAgent);
+        _uploadHttp.DefaultRequestHeaders.UserAgent.ParseAdd(NetgearAuthenticator.BrowserUserAgent);
         _authenticator = new NetgearAuthenticator(_http, trustId);
     }
 
@@ -100,11 +106,14 @@ public sealed class MeuralApiClient : IDisposable
         _refreshToken = result.RefreshToken;
         _expiresAt = result.ExpiresAt;
 
-        _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Token", _accessToken);
-        _http.DefaultRequestHeaders.Remove("x-meural-api-version");
-        _http.DefaultRequestHeaders.Add("x-meural-api-version", "4");
-        _http.DefaultRequestHeaders.Remove("x-meural-source-platform");
-        _http.DefaultRequestHeaders.Add("x-meural-source-platform", "web");
+        foreach (var http in new[] { _http, _uploadHttp })
+        {
+            http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Token", _accessToken);
+            http.DefaultRequestHeaders.Remove("x-meural-api-version");
+            http.DefaultRequestHeaders.Add("x-meural-api-version", "4");
+            http.DefaultRequestHeaders.Remove("x-meural-source-platform");
+            http.DefaultRequestHeaders.Add("x-meural-source-platform", "web");
+        }
     }
 
     // Refreshes the access token if it's expired or about to (matching pymeural's proactive
@@ -164,109 +173,6 @@ public sealed class MeuralApiClient : IDisposable
         return envelope.Data;
     }
 
-    public async Task<DeleteOutcome> DeleteItemAsync(long itemId, CancellationToken ct = default)
-    {
-        await EnsureFreshTokenAsync(ct);
-        using var response = await _http.DeleteAsync($"{ApiBaseUrl}items/{itemId}", ct);
-        return new DeleteOutcome(response.IsSuccessStatusCode, response.StatusCode);
-    }
-
-    public async Task<DeleteOutcome> DeleteGalleryAsync(long galleryId, CancellationToken ct = default)
-    {
-        await EnsureFreshTokenAsync(ct);
-        using var response = await _http.DeleteAsync($"{ApiBaseUrl}galleries/{galleryId}", ct);
-        return new DeleteOutcome(response.IsSuccessStatusCode, response.StatusCode);
-    }
-
-    public async Task<MeuralGallery> CreateGalleryAsync(string name, CancellationToken ct = default)
-    {
-        await EnsureFreshTokenAsync(ct);
-        var gallery = await PostJsonAsync<GalleryEnvelope>("galleries", new { name }, ct);
-        return gallery.Data ?? throw new MeuralApiException("Create gallery response had no data.");
-    }
-
-    public async Task<MeuralGallery> RenameGalleryAsync(long galleryId, string name, CancellationToken ct = default)
-    {
-        await EnsureFreshTokenAsync(ct);
-        var gallery = await PutJsonAsync<GalleryEnvelope>($"galleries/{galleryId}", new { name }, ct);
-        return gallery.Data ?? throw new MeuralApiException("Rename gallery response had no data.");
-    }
-
-    public async Task<MeuralItem> RenameItemAsync(long itemId, string name, CancellationToken ct = default)
-    {
-        await EnsureFreshTokenAsync(ct);
-        var item = await PutJsonAsync<MeuralItemEnvelope>($"items/{itemId}", new { name }, ct);
-        return item.Data ?? throw new MeuralApiException("Rename item response had no data.");
-    }
-
-    public async Task<DeleteOutcome> AddItemToGalleryAsync(long galleryId, long itemId, CancellationToken ct = default)
-    {
-        await EnsureFreshTokenAsync(ct);
-        using var response = await _http.PostAsync($"{ApiBaseUrl}galleries/{galleryId}/items/{itemId}", content: null, ct);
-        return new DeleteOutcome(response.IsSuccessStatusCode, response.StatusCode);
-    }
-
-    public async Task<DeleteOutcome> RemoveItemFromGalleryAsync(long galleryId, long itemId, CancellationToken ct = default)
-    {
-        await EnsureFreshTokenAsync(ct);
-        using var response = await _http.DeleteAsync($"{ApiBaseUrl}galleries/{galleryId}/items/{itemId}", ct);
-        return new DeleteOutcome(response.IsSuccessStatusCode, response.StatusCode);
-    }
-
-    // Loads (installs) a gallery on a device - confirmed against davemorin/meural-manager's
-    // server.js and the Home Assistant integration's pymeural.py (device_load_gallery), per
-    // CLAUDE.md's rule to verify undocumented endpoints there rather than guess. Neither of those
-    // two references exposes a way to unload a gallery from a device, but Meural's own Postman
-    // API documentation (documenter.getpostman.com/view/1657302/RVnWjKUL) does - see
-    // RemoveGalleryFromDeviceAsync below.
-    public async Task<DeleteOutcome> AddGalleryToDeviceAsync(long deviceId, long galleryId, CancellationToken ct = default)
-    {
-        await EnsureFreshTokenAsync(ct);
-        using var response = await _http.PostAsync($"{ApiBaseUrl}devices/{deviceId}/galleries/{galleryId}", content: null, ct);
-        return new DeleteOutcome(response.IsSuccessStatusCode, response.StatusCode);
-    }
-
-    // Unloads (removes) a gallery from a device - the DELETE counterpart to
-    // AddGalleryToDeviceAsync's POST, confirmed via Meural's own Postman API documentation
-    // (documenter.getpostman.com/view/1657302/RVnWjKUL, "Remove a gallery from the specified
-    // device"), since neither davemorin/meural-manager nor ha-meural expose this one.
-    public async Task<DeleteOutcome> RemoveGalleryFromDeviceAsync(long deviceId, long galleryId, CancellationToken ct = default)
-    {
-        await EnsureFreshTokenAsync(ct);
-        using var response = await _http.DeleteAsync($"{ApiBaseUrl}devices/{deviceId}/galleries/{galleryId}", ct);
-        return new DeleteOutcome(response.IsSuccessStatusCode, response.StatusCode);
-    }
-
-    public async Task<MeuralItem> UploadItemAsync(string filePath, string? name, IProgress<string>? progress = null, CancellationToken ct = default)
-    {
-        await EnsureFreshTokenAsync(ct);
-        progress?.Report($"Uploading \"{Path.GetFileName(filePath)}\"...");
-
-        using var fileStream = File.OpenRead(filePath);
-        using var streamContent = new StreamContent(fileStream);
-        streamContent.Headers.ContentType = new MediaTypeHeaderValue(FileNaming.GuessContentType(filePath));
-
-        using var form = new MultipartFormDataContent
-        {
-            { streamContent, "image", Path.GetFileName(filePath) },
-        };
-
-        using var response = await _http.PostAsync($"{ApiBaseUrl}items", form, ct);
-        var body = await response.Content.ReadAsStringAsync(ct);
-
-        if (!response.IsSuccessStatusCode)
-            throw new MeuralApiException($"Upload failed ({(int)response.StatusCode}): {body}");
-
-        var envelope = JsonSerializer.Deserialize<MeuralItemEnvelope>(body)
-            ?? throw new MeuralApiException("Failed to deserialize upload response.");
-        var item = envelope.Data ?? throw new MeuralApiException("Upload response had no data.");
-
-        if (!string.IsNullOrWhiteSpace(name) && item.Id is long itemId)
-            item = await RenameItemAsync(itemId, name, ct);
-
-        return item;
-    }
-
     private Task<TEnvelope> PostJsonAsync<TEnvelope>(string endpoint, object body, CancellationToken ct) =>
         SendJsonAsync<TEnvelope>(HttpMethod.Post, endpoint, body, ct);
 
@@ -282,7 +188,7 @@ public sealed class MeuralApiClient : IDisposable
         var responseBody = await response.Content.ReadAsStringAsync(ct);
 
         if (!response.IsSuccessStatusCode)
-            throw new MeuralApiException($"{method} {endpoint} returned {(int)response.StatusCode}: {responseBody}");
+            throw new MeuralApiException($"{method} {endpoint} returned {(int)response.StatusCode}: {responseBody}", response.StatusCode);
 
         return JsonSerializer.Deserialize<TEnvelope>(responseBody)
             ?? throw new MeuralApiException($"Failed to deserialize response from {method} {endpoint}.");
@@ -317,5 +223,9 @@ public sealed class MeuralApiClient : IDisposable
         return results;
     }
 
-    public void Dispose() => _http.Dispose();
+    public void Dispose()
+    {
+        _http.Dispose();
+        _uploadHttp.Dispose();
+    }
 }
