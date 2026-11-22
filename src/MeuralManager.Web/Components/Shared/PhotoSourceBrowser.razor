@@ -3,6 +3,7 @@
 @inject UserPreferencesStore Preferences
 @inject NavigationManager Nav
 @inject IJSRuntime JS
+@inject DateDisplay Dates
 
 <div class="page-header">
     <h1>@Source.Name</h1>
@@ -275,8 +276,12 @@ else
         TakenLabel(asset),
         asset);
 
-    private static string? TakenLabel(ImmichAsset asset) =>
-        (asset.LocalDateTime ?? asset.FileCreatedAt)?.ToString("ddd, MMM d, yyyy h:mm tt");
+    // Immich's localDateTime is the clock time where the photo was taken, so it's shown as is;
+    // fileCreatedAt is a real moment, shown in the account's time zone.
+    private string? TakenLabel(ImmichAsset asset) =>
+        asset.LocalDateTime is { } taken ? Dates.WallClock(taken.DateTime)
+        : asset.FileCreatedAt is { } created ? Dates.DateAndTime(created)
+        : null;
 
     // The ~1440px preview rendition - always a JPEG, and much lighter than the original.
     private string PreviewUrl(BasketEntry entry) => $"immich-proxy/{_proxyToken}/asset/{entry.Id}/preview";

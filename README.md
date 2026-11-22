@@ -80,12 +80,18 @@ also has **Restore as playlist**, which recreates the whole gallery as a Meural 
 click. It's off by default — turn it on in Settings, then enter the backup's URL and the token
 from its Settings page.
 
-## Smarter timeout handling (experimental)
+## Smarter timeout handling
 
-Meural often makes a change but answers slowly, so the app can report a failure for something
-that actually worked. Turn on "Smarter timeout handling" in Settings to have the app check on
-Meural while it waits, and only report a failure once Meural confirms the change didn't happen.
-Uploads also get two minutes instead of 30 seconds. It's off by default.
+Meural often makes a change but answers slowly, so a plain timeout would report a failure for
+something that actually worked. The app checks on Meural while it waits, and only reports a
+failure once Meural confirms the change didn't happen. Uploads get two minutes instead of 30
+seconds.
+
+## Dates and times
+
+Pick a region format and time zone in Settings. Every date and time in the app follows them:
+upload dates, the last scan, the Activity Log and photo dates. The first guess comes from your
+browser.
 
 ## Stats API
 

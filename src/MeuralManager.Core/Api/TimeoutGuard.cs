@@ -2,7 +2,7 @@ using System.Net;
 
 namespace MeuralManager.Core.Api;
 
-// "Smarter timeout handling" (an experimental, per-account setting): Meural often finishes a change
+// Smarter timeout handling: Meural often finishes a change
 // but answers slowly, or not before our time limit, so "no answer" doesn't mean "it failed". This
 // runs a call and, once it has waited CheckAfter, checks alongside it every CheckEvery whether the
 // change has already happened - whichever finishes first wins. When the call fails in a way that

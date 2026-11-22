@@ -3,6 +3,7 @@
 @inject MeuralSessionState Session
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
+@inject DateDisplay Dates
 
 <div class="page-header" data-eyebrow="Preferences">
     <h1>Settings</h1>
@@ -19,6 +20,30 @@
             <option value="@AppTheme.System">System</option>
             <option value="@AppTheme.Dark">Dark</option>
             <option value="@AppTheme.Light">Light</option>
+        </select>
+    </div>
+    <div class="setting-row">
+        <div>
+            <div class="setting-label">Region format</div>
+            <div class="muted setting-description">How dates and times look everywhere in the app.</div>
+        </div>
+        <select class="text-input setting-select" aria-label="Region format" value="@Dates.Region" @onchange="OnRegionChanged">
+            @foreach (var region in Regions.RegionFormats)
+            {
+                <option value="@region">@DateDisplay.RegionLabel(region)</option>
+            }
+        </select>
+    </div>
+    <div class="setting-row">
+        <div>
+            <div class="setting-label">Time zone</div>
+            <div class="muted setting-description">Upload dates, scans and the Activity Log are shown in this time zone.</div>
+        </div>
+        <select class="text-input setting-select" aria-label="Time zone" value="@Dates.TimeZoneId" @onchange="OnTimeZoneChanged">
+            @foreach (var zone in Regions.TimeZoneIdsWith(Dates.TimeZoneId))
+            {
+                <option value="@zone">@zone.Replace('_', ' ')</option>
+            }
         </select>
     </div>
 </div>
@@ -190,26 +215,6 @@
 </div>
 
 <div class="settings-group">
-    <h2>Experimental</h2>
-    <div class="setting-row">
-        <div>
-            <div class="setting-label">Smarter timeout handling</div>
-            <div class="muted setting-description">
-                Meural often makes a change but answers slowly, so the app can report a failure for
-                something that worked. With this on, a slow change is checked on Meural while the app
-                waits, and a timeout only counts as failed once Meural confirms it didn't happen.
-                Uploads also get two minutes instead of 30 seconds. It costs a few extra requests to
-                Meural when a change is slow.
-            </div>
-        </div>
-        <label class="switch">
-            <input type="checkbox" checked="@_smartTimeouts" @onchange="OnSmartTimeoutsToggleChanged" />
-            <span class="switch-slider"></span>
-        </label>
-    </div>
-</div>
-
-<div class="settings-group">
     <h2>Homepage Widget</h2>
     <p class="muted setting-description">
         Show this account's playlist count, image count and last scan time on a
@@ -343,7 +348,6 @@
 
     private bool _immichEnabled;
     private bool _imageBackupEnabled;
-    private bool _smartTimeouts;
 
     private AiProvider _provider = AiProvider.Claude;
     private RenameStyle _renameStyle = RenameStyle.Professional;
@@ -439,7 +443,6 @@
         _remoteControlEnabled = prefs.RemoteControlEnabled;
         _immichEnabled = prefs.ImmichEnabled;
         _imageBackupEnabled = prefs.ImageBackupEnabled;
-        _smartTimeouts = prefs.SmartTimeouts;
         _theme = await Session.LoadThemeAsync();
 
         await RefreshUnreadableAsync();
@@ -533,12 +536,16 @@
             Session.ReleasePhotoSourceClient(PhotoSource.ImageBackup);
     }
 
-    // MainLayout passes the new value to the Meural client when the preferences change.
-    private async Task OnSmartTimeoutsToggleChanged(ChangeEventArgs e)
+    private async Task OnRegionChanged(ChangeEventArgs e)
     {
-        _smartTimeouts = (bool)e.Value!;
-        var prefs = await Preferences.LoadAsync();
-        await Preferences.SaveAsync(prefs with { SmartTimeouts = _smartTimeouts });
+        Dates.Apply(e.Value?.ToString(), Dates.TimeZoneId);
+        await Session.SaveRegionAsync(Dates.Region, Dates.TimeZoneId);
+    }
+
+    private async Task OnTimeZoneChanged(ChangeEventArgs e)
+    {
+        Dates.Apply(Dates.Region, e.Value?.ToString());
+        await Session.SaveRegionAsync(Dates.Region, Dates.TimeZoneId);
     }
 
     private async Task SaveAiSettingsAsync()

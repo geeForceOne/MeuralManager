@@ -22,6 +22,7 @@ builder.Services.AddScoped<ProtectedLocalStorage>();
 builder.Services.AddScoped<WebSessionStore>();
 builder.Services.AddScoped<UserPreferencesStore>();
 builder.Services.AddScoped<MeuralSessionState>();
+builder.Services.AddScoped<DateDisplay>();
 builder.Services.AddSingleton<BackupArchiveService>();
 builder.Services.AddSingleton<ImageCacheManager>();
 builder.Services.AddSingleton<ImmichProxyRegistry>();

@@ -1,6 +1,7 @@
 @page "/orphan-uploads"
 @implements IDisposable
 @inject MeuralSessionState Session
+@inject DateDisplay Dates
 @inject BackupArchiveService BackupArchive
 
 <div class="page-header">
@@ -65,7 +66,7 @@ else
                                 <ItemImage Item="item" CssClass="thumb-sm" />
                             </td>
                             <td>@(item.Name ?? "(untitled)")</td>
-                            <td class="muted">@(item.CreatedAt ?? "(unknown)")</td>
+                            <td class="muted">@(Dates.Uploaded(item.CreatedAt) ?? "(unknown)")</td>
                             <td class="id-col muted">@item.Id</td>
                         </tr>
                     </Virtualize>
@@ -113,7 +114,7 @@ else
             var summary = await BackupService.BackupItemsAsync(orphans, workingDir, _log.AsProgress(), cts.Token);
             _log.Append($"Backup finished: {summary.Saved} saved, {summary.Failed} failed, {summary.Skipped} skipped.");
 
-            var fileName = $"meural-orphans-{DateTime.Now:yyyyMMdd-HHmmss}.zip";
+            var fileName = $"meural-orphans-{Dates.Local(DateTime.UtcNow):yyyyMMdd-HHmmss}.zip";
             BackupArchive.FinishAsZip(id, workingDir, fileName);
             _backupUrl = $"/backups/{id}/download";
             _log.Append("Backup ready - use the download link above.");

@@ -2,6 +2,7 @@
    "already in the playlist" list, that existing Meural image) filling the space, with its details
    and Add to / Remove from basket pinned below. "Compare" pins the photo as A; every photo
    previewed after that shows as B next to it (or in its place, in flip mode) until one is kept. *@
+@inject DateDisplay Dates
 <div class="pane pane-preview">
     <h3 class="pane-preview-title">Preview</h3>
     @if (Basket.PreviewItem is { } item)
@@ -13,10 +14,7 @@
             </div>
             <div class="preview-info">
                 <p class="preview-name">@(item.Name ?? "(untitled)")</p>
-                @if (!string.IsNullOrWhiteSpace(item.CreatedAt))
-                {
-                    <p class="muted preview-meta">Uploaded @item.CreatedAt</p>
-                }
+                <p class="muted preview-meta">@Dates.UploadedLine(item.CreatedAt, item.Id)</p>
                 @if (Basket.SelectedPlaylist is { } playlist)
                 {
                     <p class="muted preview-meta">Already in "@playlist.Name"</p>

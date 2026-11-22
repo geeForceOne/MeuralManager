@@ -10,7 +10,6 @@
          Dockerfile and .github/workflows/docker-publish.yml. -->
     <InformationalVersion>dev</InformationalVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
-    <InvariantGlobalization>true</InvariantGlobalization>
     <UserSecretsId>meuralmanager-web</UserSecretsId>
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
     <!-- Forces the SDK to always fetch Blazor's framework JS (blazor.web.js) as a NuGet pack

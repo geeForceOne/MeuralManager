@@ -2,6 +2,7 @@
 @implements IDisposable
 @inject MeuralSessionState Session
 @inject IJSRuntime JS
+@inject DateDisplay Dates
 @inject BackupArchiveService BackupArchive
 @inject ImageCacheManager ImageCache
 @inject UserPreferencesStore Preferences
@@ -303,10 +304,7 @@ else
                     </div>
                     <div class="preview-info">
                     <p class="preview-name">@(_previewItem.Name ?? "(untitled)")</p>
-                    @if (!string.IsNullOrWhiteSpace(_previewItem.CreatedAt))
-                    {
-                        <p class="muted preview-meta">Uploaded @_previewItem.CreatedAt</p>
-                    }
+                    <p class="muted preview-meta">@Dates.UploadedLine(_previewItem.CreatedAt, _previewItem.Id)</p>
                     <div class="preview-crop-actions">
                         @if (_cropFeatureEnabled)
                         {
@@ -1194,7 +1192,7 @@ else
             _log.Append($"Prepared {summary.Saved} image(s) ({summary.Failed} failed, {summary.Skipped} skipped).");
 
             var playlistName = FileNaming.SanitizeFileName(playlist.Name ?? "playlist");
-            var fileName = $"{playlistName}-{DateTime.Now:yyyyMMdd-HHmmss}.zip";
+            var fileName = $"{playlistName}-{Dates.Local(DateTime.UtcNow):yyyyMMdd-HHmmss}.zip";
             BackupArchive.FinishAsZip(id, workingDir, fileName);
             _log.Append("Download ready - starting download.");
             // Triggers the browser's normal file download directly (the endpoint responds with

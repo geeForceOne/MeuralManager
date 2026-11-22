@@ -1,5 +1,6 @@
 @page "/"
 @inject MeuralSessionState Session
+@inject DateDisplay Dates
 @inject UserPreferencesStore Preferences
 
 <div class="page-header dashboard-header">
@@ -17,7 +18,7 @@
         else if (Session.HasScanned)
         {
             <span>
-                Last scanned @Session.LastScannedUtc!.Value.ToLocalTime().ToString("g") —
+                Last scanned @Dates.DateAndTime(Session.LastScannedUtc!.Value) —
                 @(Session.AllItemsCache?.Count ?? 0) upload(s), @(Session.AllGalleriesCache?.Count ?? 0) playlist(s),
                 @(Session.AllDevicesCache?.Count ?? 0) frame(s).
             </span>

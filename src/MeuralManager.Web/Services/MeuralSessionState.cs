@@ -23,7 +23,8 @@ namespace MeuralManager.Web.Services;
 // the same account loads instantly from disk instead of needing a fresh scan, and the scan
 // survives a container restart the way the in-memory-only version didn't.
 public sealed class MeuralSessionState(
-    IHostEnvironment env, ImageCacheManager imageCache, IDataProtectionProvider dataProtection, ImmichProxyRegistry immichProxy) : IDisposable
+    IHostEnvironment env, ImageCacheManager imageCache, IDataProtectionProvider dataProtection, ImmichProxyRegistry immichProxy,
+    DateDisplay dates) : IDisposable
 {
     private readonly string _cacheRoot = Environment.GetEnvironmentVariable("CACHE_ROOT_PATH")
         ?? Path.Combine(env.ContentRootPath, "cache");
@@ -73,6 +74,12 @@ public sealed class MeuralSessionState(
 
         await TryHydrateFromCacheAsync();
         await LoadFrameOrientationsAsync();
+
+        // Before Changed, so the first page this account sees already shows its own region
+        // format and time zone. An account that never saved them gets a guess from the browser
+        // in MainLayout.
+        var (region, timeZone) = await LoadRegionAsync();
+        dates.Apply(region, timeZone);
 
         // Registers (or reuses) this account's independent background client and kicks off a
         // warmup for whatever items were just hydrated from disk - so a returning visit resumes
@@ -685,8 +692,7 @@ public sealed class MeuralSessionState(
         bool? CropFeatureEnabled = null,
         bool? RemoteControlEnabled = null,
         bool? ImmichEnabled = null,
-        bool? ImageBackupEnabled = null,
-        bool? SmartTimeouts = null);
+        bool? ImageBackupEnabled = null);
 
     public async Task<FeatureToggles> LoadFeatureTogglesAsync()
     {
@@ -701,8 +707,7 @@ public sealed class MeuralSessionState(
             await ReadAsync("FeatureCrop"),
             await ReadAsync("FeatureRemoteControl"),
             await ReadAsync("FeatureImmich"),
-            await ReadAsync("FeatureImageBackup"),
-            await ReadAsync("FeatureSmartTimeouts"));
+            await ReadAsync("FeatureImageBackup"));
     }
 
     public async Task SaveFeatureTogglesAsync(FeatureToggles toggles)
@@ -718,11 +723,25 @@ public sealed class MeuralSessionState(
         await WriteAsync("FeatureRemoteControl", toggles.RemoteControlEnabled);
         await WriteAsync("FeatureImmich", toggles.ImmichEnabled);
         await WriteAsync("FeatureImageBackup", toggles.ImageBackupEnabled);
-        await WriteAsync("FeatureSmartTimeouts", toggles.SmartTimeouts);
     }
 
     // The color theme the account picked in Settings - per-account like the toggles above. A browser
     // also keeps the last applied one (theme.js) so the next page load starts in it before sign-in.
+    // The account's region format and time zone (Settings > Appearance), null when never saved.
+    public async Task<(string? Region, string? TimeZone)> LoadRegionAsync() =>
+        _cacheStore is null
+            ? (null, null)
+            : (await _cacheStore.GetSettingAsync("RegionFormat", CancellationToken.None),
+               await _cacheStore.GetSettingAsync("TimeZone", CancellationToken.None));
+
+    public async Task SaveRegionAsync(string region, string timeZone)
+    {
+        if (_cacheStore is null)
+            return;
+        await _cacheStore.SetSettingAsync("RegionFormat", region, CancellationToken.None);
+        await _cacheStore.SetSettingAsync("TimeZone", timeZone, CancellationToken.None);
+    }
+
     public async Task<AppTheme> LoadThemeAsync() =>
         _cacheStore is not null
         && Enum.TryParse<AppTheme>(await _cacheStore.GetSettingAsync("Theme", CancellationToken.None), out var theme)

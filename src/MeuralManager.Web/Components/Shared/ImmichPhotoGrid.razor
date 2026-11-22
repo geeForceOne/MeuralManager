@@ -1,5 +1,6 @@
 @implements IAsyncDisposable
 @inject IJSRuntime JS
+@inject DateDisplay Dates
 
 @if (Photos.Count == 0 && !Loading)
 {
@@ -107,16 +108,7 @@ else
         </div>
     };
 
-    private static string DayLabel(DateTime day)
-    {
-        if (day == DateTime.MinValue)
-            return "Unknown date";
-        if (day == DateTime.Today)
-            return "Today";
-        if (day == DateTime.Today.AddDays(-1))
-            return "Yesterday";
-        return day.Year == DateTime.Today.Year ? day.ToString("ddd, MMM d") : day.ToString("ddd, MMM d, yyyy");
-    }
+    private string DayLabel(DateTime day) => Dates.DayLabel(day);
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
