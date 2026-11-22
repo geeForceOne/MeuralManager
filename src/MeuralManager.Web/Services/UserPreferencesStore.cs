@@ -3,9 +3,8 @@ using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage;
 namespace MeuralManager.Web.Services;
 
 // UI preferences, split by what they're about:
-//  - The feature toggles (Picture of the Moment, crop, remote control, Immich, Image Backup,
-//    smarter timeouts) live per-account in
-//    the SQLite settings table via MeuralSessionState, so they follow the account across browsers
+//  - The feature toggles (Picture of the Moment, crop, remote control, Immich, Image Backup)
+//    live per-account in the SQLite settings table via MeuralSessionState, so they follow the account across browsers
 //    and survive clearing site data - the same place the Immich URL/key and the remote toolbar's
 //    device list already are.
 //  - The Playlists and Immich pages' splitter widths depend on one browser's screen, so they stay in
@@ -31,10 +30,7 @@ public sealed class UserPreferencesStore(ProtectedLocalStorage storage, MeuralSe
         double? ImmichBasketPaneWidth = null,
         double? ImmichPreviewPaneWidth = null,
         // Off by default, like Immich: only for people running MeuralImageBackup.
-        bool ImageBackupEnabled = false,
-        // Experimental, off by default: check whether Meural already made a change when its reply
-        // is slow or missing, instead of reporting a failure (see TimeoutGuard).
-        bool SmartTimeouts = false);
+        bool ImageBackupEnabled = false);
 
     // What's in the browser's localStorage. Only the widths are written now; the toggle fields are
     // legacy - they used to live here before moving to the account DB - and are only read, as a
@@ -76,8 +72,7 @@ public sealed class UserPreferencesStore(ProtectedLocalStorage storage, MeuralSe
                 saved.RemoteControlEnabled ?? toggles.RemoteControlEnabled,
                 saved.ImmichEnabled ?? toggles.ImmichEnabled,
                 // Newer than the browser-stored toggles, so only ever in the account's DB.
-                saved.ImageBackupEnabled,
-                saved.SmartTimeouts);
+                saved.ImageBackupEnabled);
             if (merged != saved)
                 await session.SaveFeatureTogglesAsync(merged);
 
@@ -94,8 +89,7 @@ public sealed class UserPreferencesStore(ProtectedLocalStorage storage, MeuralSe
             ImmichEnabled: toggles.ImmichEnabled ?? defaults.ImmichEnabled,
             ImmichBasketPaneWidth: browser.ImmichBasketPaneWidth,
             ImmichPreviewPaneWidth: browser.ImmichPreviewPaneWidth,
-            ImageBackupEnabled: toggles.ImageBackupEnabled ?? defaults.ImageBackupEnabled,
-            SmartTimeouts: toggles.SmartTimeouts ?? defaults.SmartTimeouts);
+            ImageBackupEnabled: toggles.ImageBackupEnabled ?? defaults.ImageBackupEnabled);
     }
 
     public async Task SaveAsync(StoredPreferences preferences)
@@ -107,8 +101,7 @@ public sealed class UserPreferencesStore(ProtectedLocalStorage storage, MeuralSe
                 preferences.CropFeatureEnabled,
                 preferences.RemoteControlEnabled,
                 preferences.ImmichEnabled,
-                preferences.ImageBackupEnabled,
-                preferences.SmartTimeouts));
+                preferences.ImageBackupEnabled));
         }
 
         try

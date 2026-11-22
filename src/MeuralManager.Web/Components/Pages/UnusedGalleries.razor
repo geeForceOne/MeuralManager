@@ -2,6 +2,7 @@
 @implements IDisposable
 @inject MeuralSessionState Session
 @inject BackupArchiveService BackupArchive
+@inject DateDisplay Dates
 
 <div class="page-header">
     <h1>Unused Playlists</h1>
@@ -126,7 +127,7 @@ else
 
             _log.Append($"Playlist image backup finished: {totalSaved} saved, {totalFailed} failed, {totalSkipped} skipped.");
 
-            var fileName = $"meural-playlists-{DateTime.Now:yyyyMMdd-HHmmss}.zip";
+            var fileName = $"meural-playlists-{Dates.Local(DateTime.UtcNow):yyyyMMdd-HHmmss}.zip";
             BackupArchive.FinishAsZip(id, workingDir, fileName);
             _backupUrl = $"/backups/{id}/download";
             _log.Append("Backup ready - use the download link above.");

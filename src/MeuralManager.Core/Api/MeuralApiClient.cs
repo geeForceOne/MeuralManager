@@ -24,7 +24,7 @@ public sealed partial class MeuralApiClient : IDisposable
 
     private readonly HttpClient _http = new() { Timeout = HttpTimeout };
 
-    // Uploads only, and only with SmartTimeouts on: sending the file and Meural processing it can
+    // Uploads only: sending the file and Meural processing it can
     // take well over 30 seconds, and a cut-off upload usually still lands. Same headers as _http.
     private static readonly TimeSpan UploadHttpTimeout = TimeSpan.FromMinutes(2);
     private readonly HttpClient _uploadHttp = new() { Timeout = UploadHttpTimeout };

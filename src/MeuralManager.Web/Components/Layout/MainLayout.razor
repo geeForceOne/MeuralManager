@@ -4,6 +4,7 @@
 @inject WebSessionStore SessionStore
 @inject UserPreferencesStore Preferences
 @inject IJSRuntime JS
+@inject DateDisplay Dates
 
 @if (_checkingSession)
 {
@@ -23,7 +24,7 @@ else
         <div class="app-main-wrap">
             <main class="app-main">
                 <WhatsNewBanner />
-                <ErrorBoundary @ref="_errorBoundary">
+                <ErrorBoundary @ref="_errorBoundary" @key="_bodyKey">
                     <ChildContent>
                         @Body
                     </ChildContent>
@@ -78,6 +79,7 @@ else
     {
         Session.Changed += HandleSessionChanged;
         Preferences.Changed += HandlePreferencesChanged;
+        Dates.Changed += HandleDatesChanged;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -128,10 +130,13 @@ else
             // The account's theme can differ from the one this browser used last (another browser
             // changed it, or it's a different account), so it's applied on every sign-in.
             await JS.InvokeVoidAsync("meuralTheme.apply", (await Session.LoadThemeAsync()).ToString());
+            await ApplyRegionAsync();
         }
 
         StateHasChanged();
     });
+
+    private void HandleDatesChanged() => InvokeAsync(StateHasChanged);
 
     private void HandlePreferencesChanged() => InvokeAsync(async () =>
     {
@@ -145,11 +150,36 @@ else
         _remoteControlEnabled = prefs.RemoteControlEnabled;
         _immichEnabled = prefs.ImmichEnabled;
         _imageBackupEnabled = prefs.ImageBackupEnabled;
-        // The client does the checking itself, so it's told whenever the setting is (re)loaded:
-        // on sign-in and after every change on the Settings page.
-        if (Session.Client is { } client)
-            client.SmartTimeouts = prefs.SmartTimeouts;
     }
+
+    // MeuralSessionState applies the account's saved region format and time zone on sign-in. An
+    // account that never saved them starts from this browser's language and time zone, saved
+    // right away so every browser shows the same. The page already rendered with the defaults,
+    // so it's built again once (_bodyKey) - pages don't listen for date changes themselves.
+    private int _bodyKey;
+
+    private async Task ApplyRegionAsync()
+    {
+        var (region, timeZone) = await Session.LoadRegionAsync();
+        if (Regions.Normalize(region) is not null && Regions.IsKnownTimeZone(timeZone))
+            return;
+        try
+        {
+            var browser = await JS.InvokeAsync<BrowserRegion>("meuralRegion.browser");
+            region = Regions.Normalize(region) ?? Regions.FromBrowser(browser.Language);
+            timeZone = Regions.IsKnownTimeZone(timeZone) ? timeZone
+                : Regions.IsKnownTimeZone(browser.TimeZone) ? browser.TimeZone : Regions.DefaultTimeZone;
+            await Session.SaveRegionAsync(region, timeZone!);
+            Dates.Apply(region, timeZone);
+            _bodyKey++;
+        }
+        catch (JSException)
+        {
+            // No guess from the browser: keep the defaults, save nothing.
+        }
+    }
+
+    private sealed record BrowserRegion(string? Language, string? TimeZone);
 
     private async Task SignOutAsync()
     {
@@ -161,5 +191,6 @@ else
     {
         Session.Changed -= HandleSessionChanged;
         Preferences.Changed -= HandlePreferencesChanged;
+        Dates.Changed -= HandleDatesChanged;
     }
 }

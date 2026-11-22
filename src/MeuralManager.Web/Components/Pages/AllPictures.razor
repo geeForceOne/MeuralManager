@@ -2,6 +2,7 @@
 @implements IDisposable
 @inject MeuralSessionState Session
 @inject IJSRuntime JS
+@inject DateDisplay Dates
 
 <div class="page-header">
     <h1>All Pictures</h1>
@@ -62,7 +63,7 @@ else
                                         <EditableItemName Item="item" OnRenamed="HandleRenamed" OnRenameFailed="HandleRenameFailed" />
                                     </td>
                                     <td class="muted frames-cell" title="@playlists">@playlists</td>
-                                    <td class="muted">@(item.CreatedAt ?? "(unknown)")</td>
+                                    <td class="muted">@(Dates.Uploaded(item.CreatedAt) ?? "(unknown)")</td>
                                     <td @onclick:stopPropagation="true">
                                         @if (_aiSettings.HasKeyFor(AiProvider.Claude))
                                         {
@@ -122,10 +123,7 @@ else
                     </div>
                     <div class="preview-info">
                     <p class="preview-name">@(_previewItem.Name ?? "(untitled)")</p>
-                    @if (!string.IsNullOrWhiteSpace(_previewItem.CreatedAt))
-                    {
-                        <p class="muted preview-meta">Uploaded @_previewItem.CreatedAt</p>
-                    }
+                    <p class="muted preview-meta">@Dates.UploadedLine(_previewItem.CreatedAt, _previewItem.Id)</p>
                     @{
                         var previewPlaylists = _previewItem.Id is long previewId && playlistNames.TryGetValue(previewId, out var previewNames) && previewNames.Count > 0
                             ? string.Join(", ", previewNames)
@@ -233,8 +231,8 @@ else
                 ? query.OrderBy(PlaylistKey, StringComparer.OrdinalIgnoreCase)
                 : query.OrderByDescending(PlaylistKey, StringComparer.OrdinalIgnoreCase),
             SortColumn.Uploaded => _sortAscending
-                ? query.OrderBy(i => i.CreatedAt, StringComparer.OrdinalIgnoreCase)
-                : query.OrderByDescending(i => i.CreatedAt, StringComparer.OrdinalIgnoreCase),
+                ? query.OrderBy(i => Regions.ParseMeuralDate(i.CreatedAt))
+                : query.OrderByDescending(i => Regions.ParseMeuralDate(i.CreatedAt)),
             _ => _sortAscending
                 ? query.OrderBy(i => i.Name, StringComparer.OrdinalIgnoreCase)
                 : query.OrderByDescending(i => i.Name, StringComparer.OrdinalIgnoreCase),

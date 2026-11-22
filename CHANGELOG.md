@@ -1,5 +1,16 @@
 # Release notes
 
+## 1.16.0 - 2026-11-22
+
+### New
+
+- Region format and time zone in Settings. Every date and time in the app follows them, and the first guess comes from your browser.
+
+### Improved
+
+- Previews show a readable upload date and the picture's Meural ID, e.g. "Uploaded 10.11.2026 22:10 (ID 28117202)".
+- Smarter timeout handling is no longer experimental: it's always on, and its setting is gone.
+
 ## 1.15.0 - 2026-11-10
 
 ### New

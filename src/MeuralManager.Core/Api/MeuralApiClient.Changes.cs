@@ -6,16 +6,11 @@ using MeuralManager.Core.Services;
 
 namespace MeuralManager.Core.Api;
 
-// Every call that changes something on the Meural account. With SmartTimeouts off (the default)
-// each one is a single request with the 30-second limit, as it always was. With it on, each runs
-// through TimeoutGuard with a cheap check of its own that tells whether Meural already made the
-// change, so a slow or missing reply no longer reads as a failure.
+// Every call that changes something on the Meural account. Each runs through TimeoutGuard with a
+// cheap check of its own that tells whether Meural already made the change, so a slow or missing
+// reply doesn't read as a failure.
 public sealed partial class MeuralApiClient
 {
-    // The account's "Experimental: smarter timeout handling" setting, applied by the web app on
-    // sign-in and whenever it changes.
-    public bool SmartTimeouts { get; set; }
-
     // Items this client has uploaded in this session, so a check never takes one of them for the
     // next upload's result.
     private readonly HashSet<long> _uploadedItemIds = [];
@@ -25,7 +20,7 @@ public sealed partial class MeuralApiClient
         Func<CancellationToken, Task<TimeoutGuard.Probe<T>>> check,
         CancellationToken ct,
         Func<T, bool>? isUncertainResult = null) =>
-        SmartTimeouts ? TimeoutGuard.RunAsync(call, check, ct, isUncertainResult) : call(ct);
+        TimeoutGuard.RunAsync(call, check, ct, isUncertainResult);
 
     private static bool IsUncertainOutcome(DeleteOutcome outcome) =>
         !outcome.Success && TimeoutGuard.IsUncertain(outcome.StatusCode);
@@ -64,15 +59,11 @@ public sealed partial class MeuralApiClient
         await EnsureFreshTokenAsync(ct);
 
         // To recognize the new playlist, the check needs to know which ones by that name existed
-        // before - so with the setting on, creating a playlist costs one listing up front.
-        HashSet<long>? existing = null;
-        if (SmartTimeouts)
-        {
-            existing = (await GetAllGalleriesAsync(ct: ct))
-                .Where(g => g.Id is not null && string.Equals(g.Name, name, StringComparison.Ordinal))
-                .Select(g => g.Id!.Value)
-                .ToHashSet();
-        }
+        // before - so creating a playlist costs one listing up front.
+        var existing = (await GetAllGalleriesAsync(ct: ct))
+            .Where(g => g.Id is not null && string.Equals(g.Name, name, StringComparison.Ordinal))
+            .Select(g => g.Id!.Value)
+            .ToHashSet();
 
         return await GuardedAsync(
             async t =>
@@ -83,7 +74,7 @@ public sealed partial class MeuralApiClient
             async t =>
             {
                 var created = (await GetAllGalleriesAsync(ct: t)).FirstOrDefault(g =>
-                    g.Id is long id && !existing!.Contains(id) && string.Equals(g.Name, name, StringComparison.Ordinal));
+                    g.Id is long id && !existing.Contains(id) && string.Equals(g.Name, name, StringComparison.Ordinal));
                 return created is null ? TimeoutGuard.Probe<MeuralGallery>.No : TimeoutGuard.Probe<MeuralGallery>.Yes(created);
             },
             ct);
@@ -190,13 +181,11 @@ public sealed partial class MeuralApiClient
         // before the upload. Meural lists uploads newest first (its Postman docs' example); if it
         // ever didn't, the first page would hold nothing newer and the check would just never
         // match - a missed recovery, never a wrong one.
-        long newestBefore = 0;
-        if (SmartTimeouts)
-            newestBefore = (await GetNewestItemsAsync(ct)).Select(i => i.Id ?? 0).DefaultIfEmpty(0).Max();
+        var newestBefore = (await GetNewestItemsAsync(ct)).Select(i => i.Id ?? 0).DefaultIfEmpty(0).Max();
 
         progress?.Report($"Uploading \"{Path.GetFileName(filePath)}\"...");
         var item = await GuardedAsync(
-            t => PostItemAsync(filePath, SmartTimeouts ? _uploadHttp : _http, t),
+            t => PostItemAsync(filePath, _uploadHttp, t),
             async t =>
             {
                 var candidates = (await GetNewestItemsAsync(t))

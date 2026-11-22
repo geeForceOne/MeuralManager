@@ -6,6 +6,7 @@ namespace MeuralManager.Web.Services;
 public sealed class ActivityLog
 {
     private const int MaxEntries = 300;
+    // When is UTC; DateDisplay shows it in the account's time zone.
     private readonly List<(DateTime When, string Message)> _entries = [];
 
     public event Action? Changed;
@@ -14,7 +15,7 @@ public sealed class ActivityLog
 
     public void Append(string message)
     {
-        _entries.Add((DateTime.Now, message));
+        _entries.Add((DateTime.UtcNow, message));
         if (_entries.Count > MaxEntries)
             _entries.RemoveRange(0, _entries.Count - MaxEntries);
         Changed?.Invoke();

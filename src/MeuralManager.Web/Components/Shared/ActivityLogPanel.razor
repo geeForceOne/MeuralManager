@@ -1,4 +1,5 @@
 @implements IDisposable
+@inject DateDisplay Dates
 
 <div class="log-panel">
     <button class="log-toggle" type="button" @onclick="ToggleCollapsed">
@@ -18,7 +19,7 @@
                 @foreach (var entry in Log.Entries.Reverse())
                 {
                     <div class="log-line">
-                        <span class="log-time">@entry.When.ToString("HH:mm:ss")</span>
+                        <span class="log-time">@Dates.Time(entry.When)</span>
                         <span>@entry.Message</span>
                     </div>
                 }
