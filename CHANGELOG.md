@@ -1,5 +1,15 @@
 # Release notes
 
+## 1.17.0 - 2026-11-23
+
+### New
+
+- Filter by name on the Immich album and people lists and the Image Backup gallery list. The list narrows as you type, ignoring upper and lower case and accents, so "zurich" finds "Zürich".
+
+### Improved
+
+- An open Image Backup gallery shows its images in one grid, without the last-played date headers.
+
 ## 1.16.0 - 2026-11-22
 
 ### New

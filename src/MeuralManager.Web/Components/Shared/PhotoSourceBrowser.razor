@@ -1,4 +1,5 @@
 @implements IDisposable
+@using System.Globalization
 @inject MeuralSessionState Session
 @inject UserPreferencesStore Preferences
 @inject NavigationManager Nav
@@ -75,8 +76,18 @@ else
         }
         else
         {
+            <div class="immich-list-toolbar">
+                <input type="search" class="text-input immich-name-filter" placeholder="Filter by name…" aria-label="Filter @AlbumsLower by name"
+                       @bind="_albumFilter" @bind:event="oninput" />
+            </div>
+
+            var visibleAlbums = _albums.Where(a => NameMatches(a.AlbumName, _albumFilter)).ToList();
+            @if (visibleAlbums.Count == 0)
+            {
+                <p class="empty-state">No @AlbumsLower match “@_albumFilter.Trim()”.</p>
+            }
             <div class="immich-card-grid">
-                @foreach (var album in _albums)
+                @foreach (var album in visibleAlbums)
                 {
                     <button type="button" class="immich-card" @key="album.Id" @onclick="() => OpenAlbumAsync(album)">
                         @if (album.AlbumThumbnailAssetId is { Length: > 0 } thumbId)
@@ -107,18 +118,26 @@ else
         else
         {
             var unnamedCount = _people.Count(p => !p.HasName);
-            @if (unnamedCount > 0)
-            {
-                <label class="immich-toggle">
-                    <input type="checkbox" @bind="_showUnnamed" />
-                    <span>Show @unnamedCount unnamed face@(unnamedCount == 1 ? "" : "s")</span>
-                </label>
-            }
+            var filtering = !string.IsNullOrWhiteSpace(_personFilter);
+            <div class="immich-list-toolbar">
+                <input type="search" class="text-input immich-name-filter" placeholder="Filter by name…" aria-label="Filter people by name"
+                       @bind="_personFilter" @bind:event="oninput" />
+                @if (unnamedCount > 0)
+                {
+                    <label class="immich-toggle">
+                        <input type="checkbox" @bind="_showUnnamed" />
+                        <span>Show @unnamedCount unnamed face@(unnamedCount == 1 ? "" : "s")</span>
+                    </label>
+                }
+            </div>
 
-            var visiblePeople = _people.Where(p => p.HasName || _showUnnamed).ToList();
+            // Unnamed faces have no name to match, so a filter leaves only named people.
+            var visiblePeople = _people
+                .Where(p => p.HasName ? NameMatches(p.Name, _personFilter) : _showUnnamed && !filtering)
+                .ToList();
             @if (visiblePeople.Count == 0)
             {
-                <p class="empty-state">No named people found.</p>
+                <p class="empty-state">@(filtering ? $"No people match “{_personFilter.Trim()}”." : "No named people found.")</p>
             }
             else
             {
@@ -179,7 +198,7 @@ else
 
         <ImmichPhotoGrid Photos="_assets" ProxyToken="@_proxyToken" Selected="_basket.SelectedIds" Uploaded="_uploadedIds"
                          Previewing="@_basket.PreviewEntry?.Id" Comparing="@_basket.CompareEntry?.Id"
-                         Grouped="@(_tab != Tab.Photos || string.IsNullOrWhiteSpace(_query))"
+                         Grouped="@GroupByDay"
                          HasMore="@(_nextPage is not null)" Loading="_loadingAssets"
                          OnPreview="PreviewAsset" OnToggle="OnTileToggle" OnToggleDay="OnDayToggle"
                          OnLoadMore="() => LoadAssetsAsync(reset: false)" />
@@ -239,6 +258,10 @@ else
     private List<ImmichPerson>? _people;
     private ImmichPerson? _openPerson;
     private bool _showUnnamed;
+    // Narrow the loaded album and people lists by name, as you type. Each tab keeps its own, and
+    // it stays when you open an album and come back.
+    private string _albumFilter = "";
+    private string _personFilter = "";
     private bool _loadingList;
     private string? _listError;
 
@@ -285,6 +308,21 @@ else
 
     // The ~1440px preview rendition - always a JPEG, and much lighter than the original.
     private string PreviewUrl(BasketEntry entry) => $"immich-proxy/{_proxyToken}/asset/{entry.Id}/preview";
+
+    // Ignores case and accents, so "zurich" finds "Zürich" and "angelica" finds "Angélica".
+    private static bool NameMatches(string? name, string? filter) =>
+        string.IsNullOrWhiteSpace(filter)
+        || (name is not null && CultureInfo.InvariantCulture.CompareInfo.IndexOf(name, filter.Trim(),
+            CompareOptions.IgnoreCase | CompareOptions.IgnoreNonSpace) >= 0);
+
+    // Day headers, except for a text search (ranked by match, not date) and for sources whose
+    // albums have no meaningful dates (an Image Backup gallery's are when a frame last showed it).
+    private bool GroupByDay => _tab switch
+    {
+        Tab.Photos => string.IsNullOrWhiteSpace(_query),
+        Tab.Albums => Source.GroupAlbumsByDay,
+        _ => true,
+    };
 
     private bool ShowingGrid =>
         _tab == Tab.Photos || (_tab == Tab.Albums && _openAlbum is not null) || (_tab == Tab.People && _openPerson is not null);
