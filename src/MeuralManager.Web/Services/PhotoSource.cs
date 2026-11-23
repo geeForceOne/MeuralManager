@@ -15,6 +15,7 @@ public sealed record PhotoSource(
     string AlbumWord,
     bool HasPeople,
     bool CanRestoreAlbums,
+    bool GroupAlbumsByDay,
     string SearchHint,
     string SearchPlaceholder,
     string KeyLabel)
@@ -28,6 +29,7 @@ public sealed record PhotoSource(
         AlbumWord: "album",
         HasPeople: true,
         CanRestoreAlbums: false,
+        GroupAlbumsByDay: true,
         SearchHint: "(describe what's in the photo)",
         SearchPlaceholder: "e.g. beach at sunset",
         KeyLabel: "API key");
@@ -44,6 +46,7 @@ public sealed record PhotoSource(
         AlbumWord: "gallery",
         HasPeople: false,
         CanRestoreAlbums: true,
+        GroupAlbumsByDay: false,
         SearchHint: "(image or gallery name)",
         SearchPlaceholder: "e.g. water lilies",
         KeyLabel: "API token");

@@ -2165,6 +2165,25 @@ a { color: var(--accent-strong); }
     accent-color: var(--accent);
 }
 
+/* The name filter above the album and people lists, with the unnamed-faces toggle beside it. */
+.immich-list-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 16px;
+    margin-bottom: 14px;
+    flex-shrink: 0;
+}
+
+.immich-list-toolbar .immich-toggle {
+    margin-bottom: 0;
+}
+
+.immich-name-filter {
+    flex: 0 1 280px;
+    min-width: 0;
+}
+
 .immich-settings-actions {
     display: flex;
     flex-wrap: wrap;
